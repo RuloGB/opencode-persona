@@ -1,4 +1,6 @@
-# 🎭 Persona — role plugin for OpenCode
+<p align="center">
+   <img width="1280" height="640" alt="social-preview" src="https://github.com/user-attachments/assets/d61267ce-6446-44aa-8121-26532acce9a4" />
+</p>   
 
 Persona adapts the OpenCode assistant to each user's **professional role**. The first time you open a session it asks for your role (developer, architect, analyst, or QA), stores it in [Engram](https://github.com/Gentleman-Programming/engram), and from then on automatically loads that role's instructions — together with your communication preferences and the project's conventions — at the start of every session.
 

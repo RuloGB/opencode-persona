@@ -1,0 +1,52 @@
+{
+  "name": "opencode-persona",
+  "version": "2.0.0",
+  "description": "OpenCode plugin that asks for the user's professional role once, persists it in Engram, and injects role instructions, communication preferences, and project conventions at the start of every session",
+  "license": "MIT",
+  "author": "Raul Garcia (https://github.com/RuloGB)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RuloGB/opencode-persona.git"
+  },
+  "homepage": "https://github.com/RuloGB/opencode-persona#readme",
+  "bugs": "https://github.com/RuloGB/opencode-persona/issues",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "persona",
+    "roles",
+    "engram"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/rewrite-dts-extensions.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-force-exit \"test/*.test.ts\"",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}

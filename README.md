@@ -100,7 +100,7 @@ Node.js and npm are **not** required to use the plugin: OpenCode downloads and i
 
    OpenCode installs the package automatically the next time it starts in that project.
 
-2. Create the role instructions folder in your project by copying `templates/user-roles/` from [this repository](https://github.com/RuloGB/opencode-persona), then adapt each file to your project:
+2. Create the role instructions folder in your project by copying `templates/user-roles/` from [this repository](https://github.com/RuloGB/opencode-persona/tree/main/templates/user-roles), then adapt each file to your project:
 
    ```bash
    # from your project root

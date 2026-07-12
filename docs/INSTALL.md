@@ -17,7 +17,15 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 
 ## Installation
 
-1. **Add the plugin to your project's `opencode.json`** (create the file in the project root if it does not exist):
+1. **Add the plugin to your project.** Pick either method:
+
+   **Option A — Ask the assistant (easiest).** Open OpenCode in your project and say:
+
+   > Install the `opencode-persona` plugin in this project: https://github.com/RuloGB/opencode-persona
+
+   The assistant edits `opencode.json` for you.
+
+   **Option B — Edit `opencode.json` manually.** Create the file in the project root if it does not exist:
 
    ```json
    {
@@ -26,7 +34,7 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
    }
    ```
 
-   OpenCode installs the package automatically the next time it starts in that project. To pin an exact version (recommended for teams, so everyone runs the same one):
+   Either way, OpenCode installs the package automatically the next time it starts in that project. To pin an exact version (recommended for teams, so everyone runs the same one):
 
    ```json
    {
@@ -37,7 +45,7 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 
    > If your project already has an `opencode.json` with a `plugin` array, just append `"opencode-persona"` to it.
 
-2. **Create the role instructions folder** in your project by copying the `templates/user-roles/` folder shipped with this repository (it is also included in the npm package), then adapt each file to how you want the roles to behave in that project:
+2. **Set up the role instructions folder** (`harness/user-roles/`). If you chose **Option A** above (asked the assistant to install), it usually creates this folder from the templates as part of the install — check whether `harness/user-roles/` already exists and, if so, just adapt the files below. Otherwise, create it by copying the `templates/user-roles/` folder shipped with this repository (also included in the npm package), then adapt each file to how you want the roles to behave in that project:
 
    ```bash
    # from your project root

@@ -19,6 +19,12 @@ test("the role announcement states how to change roles and how to query the stat
   assert.ok(text.includes("get_persona_status"));
 });
 
+test("the role announcement is scoped to the first reply of the session only", () => {
+  const text = buildRoleAnnouncement("developer");
+  assert.ok(text.includes("ONLY to your very first reply"));
+  assert.ok(text.includes("do NOT start with that line"));
+});
+
 test("buildSaveRoleResult distinguishes persisted from session-only", () => {
   assert.ok(buildSaveRoleResult("developer", true, "ctx", false).includes("Role saved"));
   assert.ok(buildSaveRoleResult("developer", false, "ctx", false).includes("for this session only"));

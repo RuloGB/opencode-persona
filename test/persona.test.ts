@@ -147,7 +147,7 @@ test("saved preferences and conventions are injected in the next session", async
   assert.ok(text.includes("Working conventions recorded"));
   assert.ok(text.includes("Commits are written in English"));
   // The kickoff announcement must come last, after preferences and conventions.
-  assert.ok(text.indexOf("Start your next reply") > text.indexOf("Working conventions recorded"));
+  assert.ok(text.indexOf("Start that first reply") > text.indexOf("Working conventions recorded"));
 });
 
 test("a global convention crosses projects; a project one does not", async () => {

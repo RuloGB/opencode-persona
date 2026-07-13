@@ -1,13 +1,14 @@
 <p align="center">
-  <img width="1280" height="640" alt="opencode-persona — the OpenCode assistant that knows your role" src="https://github.com/user-attachments/assets/d61267ce-6446-44aa-8121-26532acce9a4" />
+  <img width="1280" height="640" alt="opencode-persona — one project, every role, the right assistant for each teammate" src=".github/social-preview.png" />
 </p>
 
 <p align="center">
-  <strong>The OpenCode assistant that knows who you are.</strong><br>
-  <em>It learns your professional role, your communication style, and each project's conventions — once — and applies them automatically at the start of every session.</em>
+  <strong>One project. Every role. The right assistant for each teammate.</strong><br>
+  <em>On a shared codebase, each person need the AI to work differently. Persona gives every teammate the assistant their role expects — automatically, from the same repo.</em>
 </p>
 
 <p align="center">
+  <a href="#built-for-teams-one-project-many-roles">Built for teams</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#requirements">Requirements</a> &bull;
   <a href="#what-persona-does">What it does</a> &bull;
@@ -16,6 +17,26 @@
   <a href="#installation">Installation</a> &bull;
   <a href="docs/INSTALL.md">Full docs</a>
 </p>
+
+---
+
+## Built for teams: one project, many roles
+
+A real project is not worked by a single kind of person. A **business analyst**, a **developer**, a **software architect** and a **QA engineer** all open OpenCode in the *same* repository, over the *same* code and the *same* documents — but each one needs the assistant to behave in a completely different way.
+
+Take one feature, *"add discount codes at checkout"*:
+
+- The **analyst** needs requirements: user stories and Given/When/Then acceptance criteria, in business language, **no code**.
+- The **developer** needs an implementation: the files it touches, the code, the tests, and the technical trade-offs.
+- The **architect** needs the decision first: whether it fits the current architecture, the alternatives with their trade-offs, and an ADR to record it.
+- The **QA engineer** needs to break it: a test plan of happy, edge, and error cases derived from those acceptance criteria.
+
+Same repo. Same feature. Same `opencode` command. Without Persona, everyone gets the same generic assistant and has to re-explain their role every session. **Persona resolves this** — it loads each teammate's role automatically, so the analyst gets an analyst's assistant and the developer gets a developer's, from the exact same project.
+
+What makes it work is a deliberate split:
+
+- **The role definitions are shared.** How each role behaves *in this project* lives in `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`), versioned in the repo. The team agrees on them once and they travel with the code.
+- **The role assignment is personal.** Which role *you* are is saved locally, per user and per machine — never shared. Your teammate on the same repo runs as their role; you run as yours.
 
 ---
 
@@ -133,6 +154,8 @@ Persona's memory is a **local, per-user, per-machine** database. Nothing it stor
 | Global conventions | Personal | ✅ Yes | ❌ No |
 
 Your **role and preferences** are effectively "global": saved once with personal scope, they follow you into every project that enables the plugin. **Conventions** stay bound to the project where you recorded them, unless you save them as global — then they follow you everywhere too.
+
+The one thing the **team shares** is the role *definitions* in `harness/user-roles/`: versioned in the repo and modifiable via pull request. Everyone reads the same role instructions; each teammate simply runs as their own role.
 
 ## Installation
 

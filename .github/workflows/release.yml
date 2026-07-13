@@ -47,10 +47,20 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # prepublishOnly runs typecheck, tests, and build before publishing
+      # The prepublishOnly gate runs as explicit steps so a failure is visible
+      # per phase in the run summary; publish then skips the lifecycle rerun.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
       - name: Publish to npm
         if: steps.npm-check.outputs.published == 'false'
-        run: npm publish
+        run: npm publish --ignore-scripts
 
       - name: Create GitHub Release
         env:

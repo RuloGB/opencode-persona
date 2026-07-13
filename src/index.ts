@@ -1,16 +1,21 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
 import {
+  ENTRY_GLOBAL_CONVENTIONS,
   ENTRY_PROJECT_CONVENTIONS,
   ENTRY_USER_PREFERENCES,
   ENTRY_USER_ROLE,
   EngramClient,
+  type EngramEntryDef,
 } from "./engram-client.ts";
 import { PersonaLogger } from "./logger.ts";
+import { registerProject } from "./storage-paths.ts";
 import {
+  CONVENTION_SCOPES,
   appendConvention,
   buildConventionsContext,
   sanitizeConventions,
-  type ProjectConventions,
+  type ConventionList,
+  type ConventionScope,
 } from "./conventions.ts";
 import {
   VERBOSITY_LEVELS,
@@ -41,6 +46,8 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
   const engram = new EngramClient(baseDir, logger);
   const handledSessions = new Set<string>();
 
+  registerProject(baseDir); // best-effort (never throws): keeps the ~/.persona projects index current
+
   logger.log(`plugin loaded (cwd=${cwd}, projectRoot=${projectRoot ?? "not found"})`);
 
   async function isSubagentSession(sessionID: string): Promise<boolean> {
@@ -49,6 +56,20 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
       return Boolean(session.data?.parentID);
     } catch {
       return false;
+    }
+  }
+
+  // One conventions scope read, degraded to empty on failure: callers combine
+  // scopes without one failing read losing the other.
+  async function readConventionList(
+    def: EngramEntryDef,
+    failureMessage: string
+  ): Promise<{ list: ConventionList; ok: boolean }> {
+    try {
+      return { list: sanitizeConventions(await engram.get(def)), ok: true };
+    } catch (err) {
+      logger.error(failureMessage, err);
+      return { list: { conventions: [] }, ok: false };
     }
   }
 
@@ -133,38 +154,44 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
         },
       }),
 
-      save_project_convention: tool({
+      save_convention: tool({
         description: SAVE_CONVENTION_TOOL_DESCRIPTION,
         args: {
           convention: tool.schema
             .string()
-            .describe("Team working rule, one imperative and self-contained sentence"),
+            .describe("Working rule, one imperative and self-contained sentence"),
+          scope: tool.schema
+            .enum(CONVENTION_SCOPES)
+            .optional()
+            .describe(
+              "Where the convention applies: 'project' (this project only, the default) or 'global' (all of the user's projects)"
+            ),
         },
-        async execute({ convention }) {
-          let current: ProjectConventions = { conventions: [] };
-          try {
-            current = sanitizeConventions(await engram.get(ENTRY_PROJECT_CONVENTIONS));
-          } catch (err) {
-            logger.error("could not read previous conventions; starting from empty", err);
-          }
+        async execute({ convention, scope }) {
+          const targetScope: ConventionScope = scope ?? "project";
+          const entry = targetScope === "global" ? ENTRY_GLOBAL_CONVENTIONS : ENTRY_PROJECT_CONVENTIONS;
+          const current = (
+            await readConventionList(entry, "could not read previous conventions; starting from empty")
+          ).list;
           const { updated, added, normalized } = appendConvention(current, convention);
           let persisted = added;
           if (added) {
             try {
-              await engram.save(ENTRY_PROJECT_CONVENTIONS, updated);
+              await engram.save(entry, updated);
             } catch (err) {
               persisted = false;
               logger.error("could not save the convention to Engram", err);
             }
           }
           logger.log(
-            `save_project_convention executed (added=${added}, total=${updated.conventions.length}, persisted=${persisted})`
+            `save_convention executed (scope=${targetScope}, added=${added}, total=${updated.conventions.length}, persisted=${persisted})`
           );
           return buildSaveConventionResult(
             normalized,
             added,
             updated.conventions.map((c) => c.text),
-            persisted
+            persisted,
+            targetScope
           );
         },
       }),
@@ -189,17 +216,21 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
             engramOk = false;
             logger.error("get_persona_status: could not read the preferences", err);
           }
-          let conventions: ProjectConventions = { conventions: [] };
-          try {
-            conventions = sanitizeConventions(await engram.get(ENTRY_PROJECT_CONVENTIONS));
-          } catch (err) {
-            engramOk = false;
-            logger.error("get_persona_status: could not read the conventions", err);
-          }
-          logger.log(
-            `get_persona_status executed (role=${role ?? "none"}, conventions=${conventions.conventions.length}, engramOk=${engramOk})`
+          const globalRead = await readConventionList(
+            ENTRY_GLOBAL_CONVENTIONS,
+            "get_persona_status: could not read the global conventions"
           );
-          return buildPersonaStatusResult(role, prefs, conventions, engramOk);
+          const projectRead = await readConventionList(
+            ENTRY_PROJECT_CONVENTIONS,
+            "get_persona_status: could not read the project conventions"
+          );
+          if (!globalRead.ok || !projectRead.ok) engramOk = false;
+          const globalConventions = globalRead.list;
+          const projectConventions = projectRead.list;
+          logger.log(
+            `get_persona_status executed (role=${role ?? "none"}, globalConventions=${globalConventions.conventions.length}, projectConventions=${projectConventions.conventions.length}, engramOk=${engramOk})`
+          );
+          return buildPersonaStatusResult(role, prefs, globalConventions, projectConventions, engramOk);
         },
       }),
     },
@@ -245,14 +276,15 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
           logger.error("could not read the preferences; session runs without them", err);
         }
 
-        let conventionsContext: string | null = null;
-        try {
-          conventionsContext = buildConventionsContext(
-            sanitizeConventions(await engram.get(ENTRY_PROJECT_CONVENTIONS))
-          );
-        } catch (err) {
-          logger.error("could not read the conventions; session runs without them", err);
-        }
+        // Global and project conventions also degrade independently: a failure
+        // reading one scope must not lose the other.
+        const globalConventions = (
+          await readConventionList(ENTRY_GLOBAL_CONVENTIONS, "could not read the global conventions; session runs without them")
+        ).list;
+        const projectConventions = (
+          await readConventionList(ENTRY_PROJECT_CONVENTIONS, "could not read the project conventions; session runs without them")
+        ).list;
+        const conventionsContext = buildConventionsContext(globalConventions, projectConventions);
 
         const sections: string[] = [role ? buildRoleContext(role, projectRoot) : BOOTSTRAP_PROMPT];
         if (preferencesContext) sections.push(preferencesContext);

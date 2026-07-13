@@ -1,7 +1,7 @@
 // Model-facing texts: changing their wording changes the plugin's behavior.
 import { ROLE_LABEL, type Role } from "./roles.ts";
 import { VERBOSITY_LABEL, hasPreferences, type UserPreferences } from "./preferences.ts";
-import type { ProjectConventions } from "./conventions.ts";
+import type { ConventionList, ConventionScope } from "./conventions.ts";
 
 // Shared visual marker: every reply generated from the plugin must start with
 // this prefix so the user can tell at a glance that Persona answered.
@@ -30,22 +30,26 @@ export const SAVE_PREFERENCES_TOOL_DESCRIPTION =
   "preserved. Do not use it for one-off requests scoped to a single message.";
 
 export const SAVE_CONVENTION_TOOL_DESCRIPTION =
-  "Saves a working convention for this project when the user establishes a " +
-  "rule that must be respected in future sessions (e.g. 'commits in this repo " +
-  "are written in English', 'never use any'). One imperative, self-contained " +
-  "sentence per call. It is stored in the user's LOCAL Engram with project " +
-  "scope: it applies to all of their sessions in this project, but it is NOT " +
-  "automatically shared with other people on the team (each person has their " +
-  "own Engram). Do not use it for one-off tasks or for personal preferences " +
-  "(save_user_preferences exists for those).";
+  "Saves a working convention when the user establishes a rule that must be " +
+  "respected in future sessions (e.g. 'commits in this repo are written in " +
+  "English', 'never use any'). One imperative, self-contained sentence per " +
+  "call. Scope 'project' (the default) applies only to the user's sessions " +
+  "in the current project; scope 'global' applies to their sessions in ALL " +
+  "of their projects — use it only when the user states the rule is " +
+  "universal (e.g. 'in every project', 'always, everywhere'). Either way it " +
+  "is stored in the user's LOCAL Engram: it is NOT automatically shared with " +
+  "other people on the team (each person has their own Engram). Do not use " +
+  "it for one-off tasks or for personal preferences (save_user_preferences " +
+  "exists for those).";
 
 export const PERSONA_STATUS_TOOL_DESCRIPTION =
   "Reads what the Persona plugin has recorded in Engram: the user's active " +
-  "role, communication preferences, and this project's team conventions. Use " +
-  "it WHENEVER the user asks what they have configured or recorded in Persona " +
-  "(their role, their preferences, the project's conventions) or wants to " +
-  "verify a recent change. These questions are not answered from AGENTS.md or " +
-  "other repository files.";
+  "role, communication preferences, their global conventions (applied in all " +
+  "of their projects), and this project's conventions. Use it WHENEVER the " +
+  "user asks what they have configured or recorded in Persona (their role, " +
+  "their preferences, or any conventions) or wants to verify a recent " +
+  "change. These questions are not answered from AGENTS.md or other " +
+  "repository files.";
 
 export const BOOTSTRAP_PROMPT = [
   "No role is configured for this user yet.",
@@ -114,12 +118,12 @@ export function buildSaveRoleResult(
           "the optional configuration in the SAME message, conveying exactly these ideas:",
           "- They can choose the reply language and level of detail by saying it in the chat, e.g.:",
           '  "always reply in English" · "be more brief" · "I want detailed explanations".',
-          "- They can record working conventions for this project, e.g.:",
-          '  "save as a convention: commits are written in English" · "add the convention: never use any".',
+          "- They can record working conventions, for this project or global across all their projects, e.g.:",
+          '  "save as a convention: commits are written in English" · "global convention: never use any".',
           "- They do not have to decide now: those same phrases work in any future session,",
           '  and they can review what is recorded by asking "what do I have configured in Persona?".',
           "- Remind them that everything is stored in their local Engram and is theirs alone: the",
-          "  project conventions are NOT shared with the rest of the team.",
+          "  conventions are NOT shared with the rest of the team.",
         ]
       : [];
 
@@ -162,7 +166,8 @@ export function buildSaveConventionResult(
   normalized: string | null,
   added: boolean,
   conventionTexts: string[],
-  persisted: boolean
+  persisted: boolean,
+  scope: ConventionScope
 ): string {
   if (normalized === null) {
     return (
@@ -170,24 +175,29 @@ export function buildSaveConventionResult(
       `${PREFIX_INSTRUCTION} ${LANGUAGE_INSTRUCTION}`
     );
   }
+  const scopeLabel = scope === "global" ? "all of the user's projects" : "this project";
   // The full list travels in the result: it lets the model answer questions
   // about the conventions in the same session they were saved in.
   const listing =
     conventionTexts.length > 0
-      ? ["", "Conventions currently recorded for this project:", ...conventionTexts.map((t, i) => `${i + 1}. ${t}`)]
+      ? ["", `Conventions currently recorded for ${scopeLabel}:`, ...conventionTexts.map((t, i) => `${i + 1}. ${t}`)]
       : [];
   if (!added) {
     return [
-      `The convention "${normalized}" was already recorded for this project; it was not duplicated. ` +
+      `The convention "${normalized}" was already recorded for ${scopeLabel}; it was not duplicated. ` +
         `Tell the user. ${PREFIX_INSTRUCTION} ${LANGUAGE_INSTRUCTION}`,
       ...listing,
     ].join("\n");
   }
+  const scopeSummary =
+    scope === "global"
+      ? "It will be injected at the start of each of the user's sessions in ALL of their projects."
+      : "It will be injected at the start of each of the user's sessions in this project.";
   const status = persisted
-    ? `Convention saved for this project (${conventionTexts.length} in total): "${normalized}". ` +
-      "It will be injected at the start of each of the user's sessions in this project. It stays in their local Engram: " +
+    ? `Convention saved with ${scope} scope (${conventionTexts.length} in total): "${normalized}". ` +
+      `${scopeSummary} It stays in their local Engram: ` +
       "it is NOT automatically shared with other people on the team; if the user expects it to be shared, clarify that."
-    : `Convention active for this session only: "${normalized}". ` +
+    : `Convention active for this session only (${scope} scope): "${normalized}". ` +
       "It could not be persisted to Engram (is it installed and on the PATH?).";
   return [
     status,
@@ -201,7 +211,8 @@ export function buildSaveConventionResult(
 export function buildPersonaStatusResult(
   role: Role | null,
   prefs: UserPreferences,
-  conventions: ProjectConventions,
+  globalConventions: ConventionList,
+  projectConventions: ConventionList,
   engramOk: boolean
 ): string {
   const lines = [
@@ -214,11 +225,19 @@ export function buildPersonaStatusResult(
   } else {
     lines.push("- Communication preferences: none recorded");
   }
-  if (conventions.conventions.length > 0) {
+  if (globalConventions.conventions.length > 0) {
     lines.push(
-      `- Conventions for this project (${conventions.conventions.length}, stored in the user's local Engram, not shared with the rest of the team):`
+      `- Global conventions (${globalConventions.conventions.length}, they apply in all of the user's projects, stored in their local Engram, not shared with the rest of the team):`
     );
-    conventions.conventions.forEach((c, i) => lines.push(`  ${i + 1}. ${c.text}`));
+    globalConventions.conventions.forEach((c, i) => lines.push(`  ${i + 1}. ${c.text}`));
+  } else {
+    lines.push("- Global conventions: none recorded");
+  }
+  if (projectConventions.conventions.length > 0) {
+    lines.push(
+      `- Conventions for this project (${projectConventions.conventions.length}, stored in the user's local Engram, not shared with the rest of the team):`
+    );
+    projectConventions.conventions.forEach((c, i) => lines.push(`  ${i + 1}. ${c.text}`));
   } else {
     lines.push("- Conventions for this project: none recorded");
   }

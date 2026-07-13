@@ -4,6 +4,7 @@ import {
   BOOTSTRAP_PROMPT,
   LANGUAGE_INSTRUCTION,
   PERSONA_PREFIX,
+  SAVE_CONVENTION_TOOL_DESCRIPTION,
   buildPersonaStatusResult,
   buildRoleAnnouncement,
   buildSaveConventionResult,
@@ -49,30 +50,52 @@ test("buildSavePreferencesResult warns when nothing persists or no fields are gi
   assert.ok(buildSavePreferencesResult({}, true).includes("nothing was saved"));
 });
 
+test("the save-convention description explains both scopes so the model picks correctly", () => {
+  assert.ok(SAVE_CONVENTION_TOOL_DESCRIPTION.includes("'project'"));
+  assert.ok(SAVE_CONVENTION_TOOL_DESCRIPTION.includes("'global'"));
+  assert.ok(SAVE_CONVENTION_TOOL_DESCRIPTION.includes("default"));
+});
+
 test("buildSaveConventionResult covers added, duplicate, and empty", () => {
   const texts = ["Previous rule", "Rule X"];
-  assert.ok(buildSaveConventionResult("Rule X", true, texts, true).includes("Convention saved"));
-  assert.ok(buildSaveConventionResult("Rule X", false, texts, false).includes("already recorded"));
-  assert.ok(buildSaveConventionResult(null, false, [], false).includes("empty"));
-  assert.ok(buildSaveConventionResult("Rule X", true, texts, false).includes("for this session only"));
+  assert.ok(buildSaveConventionResult("Rule X", true, texts, true, "project").includes("Convention saved"));
+  assert.ok(buildSaveConventionResult("Rule X", false, texts, false, "project").includes("already recorded"));
+  assert.ok(buildSaveConventionResult(null, false, [], false, "project").includes("empty"));
+  assert.ok(buildSaveConventionResult("Rule X", true, texts, false, "project").includes("for this session only"));
+});
+
+test("buildSaveConventionResult states the scope that was saved", () => {
+  const project = buildSaveConventionResult("Rule X", true, ["Rule X"], true, "project");
+  assert.ok(project.includes("project scope"));
+  assert.ok(project.includes("this project"));
+
+  const global = buildSaveConventionResult("Rule X", true, ["Rule X"], true, "global");
+  assert.ok(global.includes("global scope"));
+  assert.ok(global.includes("ALL of their projects"));
+
+  const globalDuplicate = buildSaveConventionResult("Rule X", false, ["Rule X"], false, "global");
+  assert.ok(globalDuplicate.includes("already recorded for all of the user's projects"));
 });
 
 test("buildSaveConventionResult includes the full current list", () => {
-  const text = buildSaveConventionResult("Rule X", true, ["Previous rule", "Rule X"], true);
+  const text = buildSaveConventionResult("Rule X", true, ["Previous rule", "Rule X"], true, "project");
   assert.ok(text.includes("1. Previous rule"));
   assert.ok(text.includes("2. Rule X"));
 });
 
 test("buildSaveConventionResult clarifies that the convention is not shared with the team", () => {
-  const text = buildSaveConventionResult("Rule X", true, ["Rule X"], true);
-  assert.ok(text.includes("local Engram"));
-  assert.ok(text.includes("NOT automatically shared"));
+  for (const scope of ["project", "global"] as const) {
+    const text = buildSaveConventionResult("Rule X", true, ["Rule X"], true, scope);
+    assert.ok(text.includes("local Engram"));
+    assert.ok(text.includes("NOT automatically shared"));
+  }
 });
 
 test("buildPersonaStatusResult lists role, preferences, and conventions", () => {
   const text = buildPersonaStatusResult(
     "architect",
     { language: "es", verbosity: "concise" },
+    { conventions: [] },
     { conventions: [{ text: "Commits in English", saved_at: "today" }] },
     true
   );
@@ -80,7 +103,21 @@ test("buildPersonaStatusResult lists role, preferences, and conventions", () => 
   assert.ok(text.includes("architect (Software Architect)"));
   assert.ok(text.includes("Preferred reply language: es"));
   assert.ok(text.includes("1. Commits in English"));
+  assert.ok(text.includes("Global conventions: none recorded"));
   assert.ok(!text.includes("Warning: Engram did not respond"));
+});
+
+test("buildPersonaStatusResult lists global and project conventions separately", () => {
+  const text = buildPersonaStatusResult(
+    null,
+    {},
+    { conventions: [{ text: "Never use any", saved_at: "today" }] },
+    { conventions: [{ text: "Commits in English", saved_at: "today" }] },
+    true
+  );
+  assert.ok(text.includes("Global conventions (1"));
+  assert.ok(text.includes("Conventions for this project (1"));
+  assert.ok(text.indexOf("Never use any") < text.indexOf("Commits in English"), "the global block comes first");
 });
 
 test("every plugin reply demands the 🎭 prefix from the model", () => {
@@ -92,11 +129,12 @@ test("every plugin reply demands the 🎭 prefix from the model", () => {
     buildSavePreferencesResult({ language: "en" }, true),
     buildSavePreferencesResult({ language: "en" }, false),
     buildSavePreferencesResult({}, true),
-    buildSaveConventionResult("Rule X", true, ["Rule X"], true),
-    buildSaveConventionResult("Rule X", true, ["Rule X"], false),
-    buildSaveConventionResult("Rule X", false, ["Rule X"], false),
-    buildSaveConventionResult(null, false, [], false),
-    buildPersonaStatusResult(null, {}, { conventions: [] }, true),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], true, "project"),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], true, "global"),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], false, "project"),
+    buildSaveConventionResult("Rule X", false, ["Rule X"], false, "global"),
+    buildSaveConventionResult(null, false, [], false, "project"),
+    buildPersonaStatusResult(null, {}, { conventions: [] }, { conventions: [] }, true),
   ];
   for (const output of outputs) {
     assert.ok(output.includes(PERSONA_PREFIX), `missing prefix in: ${output.slice(0, 80)}...`);
@@ -113,11 +151,12 @@ test("every model-facing prompt states the language-matching rule", () => {
     buildSavePreferencesResult({ language: "en" }, true),
     buildSavePreferencesResult({ language: "en" }, false),
     buildSavePreferencesResult({}, true),
-    buildSaveConventionResult("Rule X", true, ["Rule X"], true),
-    buildSaveConventionResult("Rule X", true, ["Rule X"], false),
-    buildSaveConventionResult("Rule X", false, ["Rule X"], false),
-    buildSaveConventionResult(null, false, [], false),
-    buildPersonaStatusResult(null, {}, { conventions: [] }, true),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], true, "project"),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], true, "global"),
+    buildSaveConventionResult("Rule X", true, ["Rule X"], false, "project"),
+    buildSaveConventionResult("Rule X", false, ["Rule X"], false, "global"),
+    buildSaveConventionResult(null, false, [], false, "project"),
+    buildPersonaStatusResult(null, {}, { conventions: [] }, { conventions: [] }, true),
   ];
   for (const output of outputs) {
     assert.ok(output.includes(LANGUAGE_INSTRUCTION), `missing language rule in: ${output.slice(0, 80)}...`);
@@ -125,11 +164,12 @@ test("every model-facing prompt states the language-matching rule", () => {
 });
 
 test("buildPersonaStatusResult distinguishes empty state from Engram being down", () => {
-  const empty = buildPersonaStatusResult(null, {}, { conventions: [] }, true);
+  const empty = buildPersonaStatusResult(null, {}, { conventions: [] }, { conventions: [] }, true);
   assert.ok(empty.includes("Active role: none recorded"));
   assert.ok(empty.includes("Communication preferences: none recorded"));
+  assert.ok(empty.includes("Global conventions: none recorded"));
   assert.ok(empty.includes("Conventions for this project: none recorded"));
 
-  const degraded = buildPersonaStatusResult(null, {}, { conventions: [] }, false);
+  const degraded = buildPersonaStatusResult(null, {}, { conventions: [] }, { conventions: [] }, false);
   assert.ok(degraded.includes("Warning: Engram did not respond"));
 });

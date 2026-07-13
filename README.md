@@ -95,7 +95,7 @@ You configure Persona by talking to it. No commands, no config files to hand-edi
   preferences, and              user:                          and conventions
   conventions by chat           · role (personal)              are injected into
                                 · preferences (personal)       every session —
-                                · conventions (project)        automatically
+                                · conventions (project/global) automatically
 ```
 
 | Capability | How you use it | What happens |
@@ -104,10 +104,11 @@ You configure Persona by talking to it. No commands, no config files to hand-edi
 | **Hot role switching** | "change my role to QA" | The stored role is updated in place — no duplicates, no repeated onboarding. |
 | **Communication preferences** *(personal)* | "always reply in English", "be more brief" | Reply language and level of detail travel with you across every project. Each field updates independently. |
 | **Project conventions** *(project)* | "commits in this repo are written in English" | Up to 20 conventions per project, injected only in your sessions inside that project. |
+| **Global conventions** *(personal)* | "save as a global convention: never use `any`" | Up to 20 conventions that follow you into every project. A rule recorded in both scopes is injected once, under the project block. |
 | **Status query** | "what do I have recorded in Persona?" | The assistant reads back your real role, preferences, and conventions from the local database — not from repo docs. |
 | **Language mirroring** | Just write in your language | The assistant always replies in the language you use; a saved language preference takes precedence over mirroring. |
 
-**Built to stay out of the way.** If the local database is down, Persona degrades gracefully instead of blocking the session (hung connections time out at 8 s). If preferences or conventions fail to load, the role is still injected. Subagent sessions are ignored. A missing role file is reported, and the assistant continues with its default behavior. Everything is logged to `.opencode/persona.log` for diagnostics.
+**Built to stay out of the way.** If the local database is down, Persona degrades gracefully instead of blocking the session (hung connections time out at 8 s). If preferences or conventions fail to load, the role is still injected. Subagent sessions are ignored. A missing role file is reported, and the assistant continues with its default behavior. Everything is logged to `~/.persona/persona.log` for diagnostics — the plugin keeps all its runtime files in your user home and writes nothing inside your project.
 
 ## Tools
 
@@ -117,7 +118,7 @@ The assistant calls these on its own whenever you express a role, a preference, 
 |------|--------------|
 | `save_user_role` | Saves or updates the user's role (upsert, no duplicates). |
 | `save_user_preferences` | Saves the reply language and/or level of detail. |
-| `save_project_convention` | Adds a working convention to the current project. |
+| `save_convention` | Adds a working convention to the current project (default) or, with global scope, to all of your projects. |
 | `get_persona_status` | Returns the role, preferences, and conventions recorded in the local database. |
 
 ## Data & Scope
@@ -129,8 +130,9 @@ Persona's memory is a **local, per-user, per-machine** database. Nothing it stor
 | Role | Personal | ✅ Asked once, applies everywhere | ❌ No |
 | Preferences (language, detail) | Personal | ✅ Yes | ❌ No |
 | Project conventions | Project | ❌ No — bound to the project | ❌ No |
+| Global conventions | Personal | ✅ Yes | ❌ No |
 
-Your **role and preferences** are effectively "global": saved once with personal scope, they follow you into every project that enables the plugin. **Conventions** stay bound to the project where you recorded them.
+Your **role and preferences** are effectively "global": saved once with personal scope, they follow you into every project that enables the plugin. **Conventions** stay bound to the project where you recorded them, unless you save them as global — then they follow you everywhere too.
 
 ## Installation
 

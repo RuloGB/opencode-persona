@@ -15,12 +15,17 @@ const dirs: string[] = [];
 
 after(() => dirs.forEach(removeDir));
 
-function makeProject(): { root: string; store: string } {
+function makeProject(): { root: string; store: string; home: string } {
   const root = makeTempDir("persona-plugin-");
-  dirs.push(root);
+  const home = makeTempDir("persona-plugin-home-");
+  dirs.push(root, home);
+  // The plugin resolves ~/.persona from PERSONA_HOME: tests must never write
+  // to the real user home. The fake Engram store also lives outside the
+  // project so the suite can assert the project dir stays untouched.
+  process.env.PERSONA_HOME = home;
   fs.mkdirSync(path.join(root, "harness", "user-roles"), { recursive: true });
   fs.writeFileSync(path.join(root, "harness", "user-roles", "DEV.md"), "Test DEV content");
-  return { root, store: path.join(root, "fake-engram-store.json") };
+  return { root, store: path.join(home, "fake-engram-store.json"), home };
 }
 
 function useFakeEngram(store: string): void {
@@ -127,11 +132,11 @@ test("saved preferences and conventions are injected in the next session", async
   );
   assert.ok(prefsResult.includes("Preferences saved"));
 
-  const convResult = await hooks.tool.save_project_convention.execute(
+  const convResult = await hooks.tool.save_convention.execute(
     { convention: "Commits are written in English" },
     {}
   );
-  assert.ok(convResult.includes("Convention saved"));
+  assert.ok(convResult.includes("Convention saved with project scope"));
 
   const output = makeOutput("s-full");
   await hooks["chat.message"]({ sessionID: "s-full" }, output);
@@ -143,6 +148,94 @@ test("saved preferences and conventions are injected in the next session", async
   assert.ok(text.includes("Commits are written in English"));
   // The kickoff announcement must come last, after preferences and conventions.
   assert.ok(text.indexOf("Start your next reply") > text.indexOf("Working conventions recorded"));
+});
+
+test("a global convention crosses projects; a project one does not", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+  // The project convention makes the negative assertions below meaningful:
+  // the store really contains a project entry from the other root.
+  await hooks.tool.save_convention.execute({ convention: "Only for this repo" }, {});
+  const saved = await hooks.tool.save_convention.execute(
+    { convention: "Never use any", scope: "global" },
+    {}
+  );
+  assert.ok(saved.includes("Convention saved with global scope"));
+
+  // A different project sharing the same Engram (same user) must receive the
+  // global convention in its injection, but not the other project's one.
+  const otherRoot = makeTempDir("persona-plugin-other-");
+  dirs.push(otherRoot);
+  const otherHooks = await makePlugin(otherRoot);
+  const output = makeOutput("s-global");
+  await otherHooks["chat.message"]({ sessionID: "s-global" }, output);
+
+  const text = output.parts[0].text;
+  assert.ok(text.includes("Global conventions"));
+  assert.ok(text.includes("Never use any"));
+  assert.ok(!text.includes("Only for this repo"), "the project convention must stay in its project");
+  assert.ok(!text.includes("Conventions for this project"));
+
+  const status = await otherHooks.tool.get_persona_status.execute({}, {});
+  assert.ok(status.includes("Global conventions (1"));
+  assert.ok(status.includes("Conventions for this project: none recorded"));
+  assert.ok(!status.includes("Only for this repo"));
+});
+
+test("a failure reading one conventions scope still injects the other and the role", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const seed = await makePlugin(root);
+  await seed.tool.save_user_role.execute({ role: "developer" }, {});
+  await seed.tool.save_convention.execute({ convention: "Commits in English" }, {});
+  await seed.tool.save_convention.execute({ convention: "Never use any", scope: "global" }, {});
+
+  // Fresh home (cold id cache) so reads go through mem_search, where the
+  // injected failure lives; only the global-conventions query fails.
+  const failingHome = makeTempDir("persona-plugin-home-");
+  dirs.push(failingHome);
+  process.env.PERSONA_HOME = failingHome;
+  process.env.PERSONA_ENGRAM_ARGS = JSON.stringify([FIXTURE, store, "--fail-query=global conventions"]);
+  const hooks = await makePlugin(root);
+
+  const output = makeOutput("s-degraded-global");
+  await hooks["chat.message"]({ sessionID: "s-degraded-global" }, output);
+  assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
+  const text = output.parts[0].text;
+  assert.ok(text.includes("active role — Developer"));
+  assert.ok(text.includes("Commits in English"), "the surviving project scope must still be injected");
+  assert.ok(!text.includes("Never use any"));
+
+  const status = await hooks.tool.get_persona_status.execute({}, {});
+  assert.ok(status.includes("1. Commits in English"));
+  assert.ok(status.includes("Global conventions: none recorded"));
+  assert.ok(status.includes("Warning: Engram did not respond"));
+});
+
+test("a failure reading the project scope still injects the global scope", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const seed = await makePlugin(root);
+  await seed.tool.save_user_role.execute({ role: "developer" }, {});
+  await seed.tool.save_convention.execute({ convention: "Commits in English" }, {});
+  await seed.tool.save_convention.execute({ convention: "Never use any", scope: "global" }, {});
+
+  const failingHome = makeTempDir("persona-plugin-home-");
+  dirs.push(failingHome);
+  process.env.PERSONA_HOME = failingHome;
+  process.env.PERSONA_ENGRAM_ARGS = JSON.stringify([FIXTURE, store, "--fail-query=project conventions"]);
+  const hooks = await makePlugin(root);
+
+  const output = makeOutput("s-degraded-project");
+  await hooks["chat.message"]({ sessionID: "s-degraded-project" }, output);
+  assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
+  const text = output.parts[0].text;
+  assert.ok(text.includes("active role — Developer"));
+  assert.ok(text.includes("Never use any"), "the surviving global scope must still be injected");
+  assert.ok(!text.includes("Commits in English"));
 });
 
 test("preferences merge across tool calls", async () => {
@@ -162,8 +255,8 @@ test("a repeated convention is not duplicated", async () => {
   useFakeEngram(store);
   const hooks = await makePlugin(root);
 
-  await hooks.tool.save_project_convention.execute({ convention: "Never use any" }, {});
-  const repeat = await hooks.tool.save_project_convention.execute({ convention: "never USE any" }, {});
+  await hooks.tool.save_convention.execute({ convention: "Never use any" }, {});
+  const repeat = await hooks.tool.save_convention.execute({ convention: "never USE any" }, {});
 
   assert.ok(repeat.includes("already recorded"));
 });
@@ -192,13 +285,17 @@ test("get_persona_status returns what is recorded in Engram", async () => {
 
   await hooks.tool.save_user_role.execute({ role: "architect" }, {});
   await hooks.tool.save_user_preferences.execute({ language: "es" }, {});
-  await hooks.tool.save_project_convention.execute({ convention: "Commits in English" }, {});
+  await hooks.tool.save_convention.execute({ convention: "Commits in English" }, {});
+  await hooks.tool.save_convention.execute({ convention: "Never use any", scope: "global" }, {});
 
   const status = await hooks.tool.get_persona_status.execute({}, {});
   assert.ok(status.includes("Persona plugin"));
   assert.ok(status.includes("architect"));
   assert.ok(status.includes("Preferred reply language: es"));
+  assert.ok(status.includes("Conventions for this project (1"));
   assert.ok(status.includes("1. Commits in English"));
+  assert.ok(status.includes("Global conventions (1"));
+  assert.ok(status.includes("1. Never use any"));
 });
 
 test("get_persona_status with no recorded data says so explicitly", async () => {
@@ -209,6 +306,8 @@ test("get_persona_status with no recorded data says so explicitly", async () => 
   const status = await hooks.tool.get_persona_status.execute({}, {});
   assert.ok(status.includes("Active role: none recorded"));
   assert.ok(status.includes("Communication preferences: none recorded"));
+  assert.ok(status.includes("Global conventions: none recorded"));
+  assert.ok(status.includes("Conventions for this project: none recorded"));
 });
 
 test("get_persona_status warns when Engram does not respond", async () => {
@@ -228,4 +327,19 @@ test("save_user_preferences with no recognizable fields saves nothing", async ()
 
   const result = await hooks.tool.save_user_preferences.execute({}, {});
   assert.ok(result.includes("nothing was saved"));
+});
+
+test("the plugin writes only under the persona home, never inside the project", async () => {
+  const { root, store, home } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+  await hooks.tool.save_convention.execute({ convention: "Commits in English" }, {});
+  await hooks["chat.message"]({ sessionID: "s-no-project-writes" }, makeOutput("s-no-project-writes"));
+
+  assert.deepEqual(fs.readdirSync(root), ["harness"], "the project dir must stay untouched");
+  assert.ok(fs.existsSync(path.join(home, ".persona", "persona.log")));
+  assert.ok(fs.existsSync(path.join(home, ".persona", "cache", `${path.basename(root)}.json`)));
+  assert.ok(fs.existsSync(path.join(home, ".persona", "projects.json")));
 });

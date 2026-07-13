@@ -1,8 +1,17 @@
 // Fake MCP server that mimics `engram mcp` for the tests: persists the
 // observations in the JSON file at argv[2] and replicates the real response
-// format (JSON serialized in content[0].text). With "--hang" it simulates a
-// binary that never completes the handshake, to test the connection timeout.
+// format (JSON serialized in content[0].text). Like the real Engram, it
+// infers the project from the cwd basename (EngramClient pins the subprocess
+// cwd to the project root): observations record the project they were saved
+// in, and mem_search only crosses projects when the caller sends
+// all_projects: true. Extra flags after the store path:
+// - "--hang" simulates a binary that never completes the handshake, to test
+//   the connection timeout.
+// - "--fail-query=<substring>" makes mem_search calls whose query contains
+//   the substring fail, to test per-entry degradation (each Persona entry
+//   has a distinct searchQuery).
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -13,6 +22,7 @@ interface StoredEntry {
   type: string;
   scope: string;
   topic_key: string;
+  project: string;
   content: string;
 }
 
@@ -22,7 +32,8 @@ interface Store {
 }
 
 const storePath = process.argv[2];
-const mode = process.argv[3];
+const extraArgs = process.argv.slice(3);
+const failQuery = extraArgs.find((a) => a.startsWith("--fail-query="))?.slice("--fail-query=".length) ?? null;
 
 // If the test process dies, the stdin close avoids leaving orphans behind.
 process.stdin.on("close", () => process.exit(0));
@@ -30,7 +41,7 @@ process.stdin.on("end", () => process.exit(0));
 
 if (!storePath) {
   process.exit(2);
-} else if (mode === "--hang") {
+} else if (extraArgs.includes("--hang")) {
   setInterval(() => {}, 60_000);
 } else {
   main();
@@ -67,11 +78,16 @@ function main(): void {
     const name = request.params.name;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     const store = loadStore();
+    const project = path.basename(process.cwd());
 
     if (name === "mem_save") {
       const topicKey = String(args.topic_key ?? "");
       const scope = String(args.scope ?? "project");
-      let entry = store.entries.find((e) => e.topic_key === topicKey && e.scope === scope);
+      // Personal topics upsert across projects (user-level data); project
+      // topics upsert only within the project that saved them.
+      let entry = store.entries.find(
+        (e) => e.topic_key === topicKey && e.scope === scope && (scope === "personal" || e.project === project)
+      );
       if (entry) {
         entry.title = String(args.title ?? entry.title);
         entry.content = String(args.content ?? "");
@@ -82,6 +98,7 @@ function main(): void {
           type: String(args.type ?? ""),
           scope,
           topic_key: topicKey,
+          project,
           content: String(args.content ?? ""),
         };
         store.entries.push(entry);
@@ -91,9 +108,15 @@ function main(): void {
     }
 
     if (name === "mem_search") {
+      const query = String(args.query ?? "");
+      if (failQuery !== null && query.includes(failQuery)) {
+        throw new Error(`injected failure for mem_search query containing "${failQuery}"`);
+      }
       const scope = args.scope === undefined ? null : String(args.scope);
+      const allProjects = args.all_projects === true;
       const results = store.entries
         .filter((e) => scope === null || e.scope === scope)
+        .filter((e) => allProjects || e.project === project)
         .map((e) => ({ id: e.id, title: e.title }));
       return json({ results });
     }

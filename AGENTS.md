@@ -12,15 +12,18 @@ The repo root is the npm package `opencode-persona`; consumers enable it with
 ```
 src/
 ├── index.ts          ← OpenCode plugin entry (hooks + tools save_user_role,
-│                       save_user_preferences, save_project_convention and
+│                       save_user_preferences, save_convention and
 │                       get_persona_status); named export + default alias
-├── conventions.ts    ← team-conventions domain (bounded list, dedupe)
+├── conventions.ts    ← conventions domain (project + global scopes, bounded
+│                       list, dedupe)
 ├── engram-cache.ts   ← local cache: logical key -> observation id
 ├── engram-client.ts  ← Engram MCP client (`engram mcp` subprocess, timeouts)
-├── logger.ts         ← diagnostics log -> .opencode/persona.log
+├── logger.ts         ← diagnostics log -> ~/.persona/persona.log
 ├── preferences.ts    ← user-preferences domain (language, detail)
 ├── prompts.ts        ← model-facing texts (bootstrap, announcement, tools)
-└── roles.ts          ← roles domain: catalog and instruction loading
+├── roles.ts          ← roles domain: catalog and instruction loading
+└── storage-paths.ts  ← global storage layout under ~/.persona (paths,
+                        project key, projects index)
 test/
 ├── helpers/
 │   ├── fake-engram.ts ← fake MCP server that mimics `engram mcp` (fixture)
@@ -51,7 +54,8 @@ README.md             ← public plugin documentation
 |---------------------|-------|---------|---------------------|
 | `persona/user-role` | personal | User's role (developer/architect/analyst/qa) | `save_user_role` (also for role changes) |
 | `persona/user-preferences` | personal | Reply language and level of detail | `save_user_preferences` (merge: what is not provided is kept) |
-| `persona/project-conventions` | project | Project working rules (max. 20, no duplicates) | `save_project_convention` |
+| `persona/project-conventions` | project | Project working rules (max. 20, no duplicates) | `save_convention` (default scope) |
+| `persona/global-conventions` | personal | Working rules applied in all of the user's projects (max. 20, no duplicates) | `save_convention` with `scope: "global"` |
 
 The Engram scope ALWAYS delimits within the user's local database, never
 across people: "personal" travels with the user across projects, "project"
@@ -62,12 +66,14 @@ the old name is orphaned (done knowingly during testing with
 `persona/team-conventions` → `persona/project-conventions`, and again before
 the first public release when `title`/`searchQuery` moved from Spanish to English).
 
-All three are injected on the first `chat.message` of each session: role +
-preferences + conventions, with the kickoff announcement always last.
-Preferences or conventions failures degrade separately and never prevent
-injecting the role; a failure reading the role is retried on the next message.
+All of them are injected on the first `chat.message` of each session: role +
+preferences + conventions (global and project rendered as one section; a rule
+present in both scopes is shown only once, under the project block), with the
+kickoff announcement always last. Preferences and each conventions scope
+degrade separately and never prevent injecting the role; a failure reading
+the role is retried on the next message.
 
-The read-only tool `get_persona_status` queries the three entries live. The
+The read-only tool `get_persona_status` queries all the entries live. The
 session announcement instructs the model to use it when the user asks what
 they have recorded in Persona: the injected blocks are labeled as coming from
 the plugin, but without the tool the model tended to answer those questions
@@ -103,7 +109,7 @@ conventions).
   into `.js` in `dist/*.js`; tsc does NOT rewrite declaration output, so
   `scripts/rewrite-dts-extensions.mjs` patches `dist/*.d.ts` after `tsc`.
 - Do not use `console.error`/`console.log` in the plugin: it paints over the
-  TUI and corrupts the screen. Diagnostics only via `.opencode/persona.log`.
+  TUI and corrupts the screen. Diagnostics only via `~/.persona/persona.log`.
 
 ## Conventions
 
@@ -120,7 +126,7 @@ conventions).
 npm install && npm run typecheck && npm test
 ```
 
-The suite (`node:test`, 55 tests) does not touch the real Engram database:
+The suite (`node:test`, 81 tests) does not touch the real Engram database:
 the integration tests launch `test/helpers/fake-engram.ts`, a fake MCP server
 that replicates the `engram mcp` response format over a temporary JSON file.
 Operational details:
@@ -131,6 +137,9 @@ Operational details:
 - `PERSONA_ENGRAM_CMD` and `PERSONA_ENGRAM_ARGS` (JSON array) allow replacing
   the `engram` binary and its arguments: the plugin tests use them and they
   also serve diagnostics with binaries in non-standard paths.
+- `PERSONA_HOME` overrides the user home that anchors `~/.persona` (log,
+  cache, projects index): the tests point it at temp dirs so nothing is ever
+  written to the real home or inside a project.
 - The Engram connection has a timeout (8 s by default): a hung `engram mcp`
   degrades to default behavior instead of blocking the injection forever.
 
@@ -144,8 +153,16 @@ dogfood shim `.opencode/plugin/persona.ts` (a re-export of `src/index.ts`)
 whose imports resolve against the root `node_modules/`, so run `npm install`
 first. It requires the `engram` binary on the PATH (the plugin starts it as
 a subprocess via `engram mcp`); without it, the plugin degrades to default
-behavior without blocking the session.
+behavior without blocking the session. The shim is intentionally excluded from
+the `tsconfig.json` include: opening OpenCode here generates a gitignored
+`.opencode/package.json` (dependencies only, no `"type": "module"`), which
+under NodeNext would flip the shim to CommonJS and fail `verbatimModuleSyntax`
+(TS1295) depending on invisible local state.
 
-`.opencode/.persona-cache.json` is a local per-machine cache (ids from
-Engram's local SQLite database) — it is in `.gitignore` and is never
-versioned.
+The plugin never writes inside the project: its runtime files live under
+`~/.persona/` — `persona.log` (single log shared by all projects, each line
+tagged with the project key), `cache/<project>.json` (local per-machine cache
+of ids from Engram's local SQLite database), and `projects.json` (project
+key -> last known root). The project key is the basename of the project root,
+mirroring how Engram infers the project from the cwd; two roots with the same
+basename are the same project by design.

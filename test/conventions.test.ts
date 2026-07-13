@@ -6,10 +6,10 @@ import {
   appendConvention,
   buildConventionsContext,
   sanitizeConventions,
-  type ProjectConventions,
+  type ConventionList,
 } from "../src/conventions.ts";
 
-const EMPTY: ProjectConventions = { conventions: [] };
+const EMPTY: ConventionList = { conventions: [] };
 
 test("appendConvention adds normalizing whitespace and line breaks", () => {
   const { updated, added, normalized } = appendConvention(EMPTY, "  Commits \n  in English  ");
@@ -62,11 +62,53 @@ test("sanitizeConventions drops corrupt entries without throwing", () => {
   );
 });
 
-test("buildConventionsContext returns null without conventions and a list with them", () => {
-  assert.equal(buildConventionsContext(EMPTY), null);
-  const current = appendConvention(EMPTY, "Never use any").updated;
-  const text = buildConventionsContext(current);
+test("buildConventionsContext returns null when both scopes are empty", () => {
+  assert.equal(buildConventionsContext(EMPTY, EMPTY), null);
+});
+
+test("buildConventionsContext renders the project block alone", () => {
+  const project = appendConvention(EMPTY, "Never use any").updated;
+  const text = buildConventionsContext(EMPTY, project);
   assert.ok(text?.includes("Working conventions recorded"));
   assert.ok(text?.includes("local Engram"), "it must make clear the scope is the user's local Engram");
+  assert.ok(text?.includes("Conventions for this project:"));
   assert.ok(text?.includes("- Never use any"));
+  assert.ok(!text?.includes("Global conventions"));
+});
+
+test("buildConventionsContext renders the global block alone", () => {
+  const global = appendConvention(EMPTY, "Reply in English").updated;
+  const text = buildConventionsContext(global, EMPTY);
+  assert.ok(text?.includes("Global conventions (they apply in ALL of the user's projects):"));
+  assert.ok(text?.includes("- Reply in English"));
+  assert.ok(!text?.includes("Conventions for this project"));
+});
+
+test("buildConventionsContext renders both blocks with global first", () => {
+  const global = appendConvention(EMPTY, "Reply in English").updated;
+  const project = appendConvention(EMPTY, "Never use any").updated;
+  const text = buildConventionsContext(global, project) ?? "";
+  assert.ok(text.includes("- Reply in English"));
+  assert.ok(text.includes("- Never use any"));
+  assert.ok(text.indexOf("Global conventions") < text.indexOf("Conventions for this project"));
+});
+
+test("a convention present in both scopes is listed only once, in the project block", () => {
+  const global = appendConvention(EMPTY, "never USE any").updated;
+  const project = appendConvention(EMPTY, "Never use any").updated;
+  const text = buildConventionsContext(global, project) ?? "";
+  assert.ok(!text.includes("Global conventions"), "an emptied global block must disappear");
+  assert.equal((text.match(/use any/gi) ?? []).length, 1);
+  assert.ok(text.includes("- Never use any"), "the project spelling wins");
+});
+
+test("dedupe keeps global conventions absent from the project list", () => {
+  let global = appendConvention(EMPTY, "Rule A").updated;
+  global = appendConvention(global, "Rule B").updated;
+  const project = appendConvention(EMPTY, "rule b").updated;
+  const text = buildConventionsContext(global, project) ?? "";
+  const globalBlock = text.slice(text.indexOf("Global conventions"), text.indexOf("Conventions for this project"));
+  assert.ok(globalBlock.includes("- Rule A"));
+  assert.ok(!globalBlock.includes("- Rule B"));
+  assert.ok(text.includes("- rule b"));
 });

@@ -1,16 +1,17 @@
 // Map of logical key -> Engram observation id, for exact reads with
 // mem_get_observation. Ids belong to the local SQLite database: the cache is
-// per machine and is never versioned.
+// per machine and lives under ~/.persona/cache, never inside the project.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { cachePath } from "./storage-paths.ts";
 
 export class EngramCacheStore {
   private readonly cachePath: string;
   private cache: Record<string, string> = {};
   private loaded = false;
 
-  constructor(projectRoot: string) {
-    this.cachePath = path.join(projectRoot, ".opencode", ".persona-cache.json");
+  constructor(projectRoot: string, home?: string) {
+    this.cachePath = cachePath(projectRoot, home);
   }
 
   get(key: string): string | undefined {

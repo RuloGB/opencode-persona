@@ -55,6 +55,17 @@ export const ENTRY_PROJECT_CONVENTIONS: EngramEntryDef = {
   searchQuery: "persona project conventions",
 };
 
+// Same payload shape as the project conventions, but personal scope: these
+// conventions travel with the user and apply across all of their projects.
+export const ENTRY_GLOBAL_CONVENTIONS: EngramEntryDef = {
+  key: "global_conventions",
+  topicKey: "persona/global-conventions",
+  title: "Persona: global conventions",
+  type: "config",
+  scope: "personal",
+  searchQuery: "persona global conventions",
+};
+
 /** Engram unavailable (missing binary, dropped connection...); callers degrade to default behavior. */
 export class EngramUnavailableError extends Error {
   constructor(cause: unknown) {
@@ -71,6 +82,8 @@ export interface EngramTransportOptions {
   connectTimeoutMs?: number;
   /** Maximum wait per individual MCP call. */
   callTimeoutMs?: number;
+  /** Overrides the user home that anchors the local id cache (~/.persona/cache); used by tests. */
+  home?: string;
 }
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 8000;
@@ -87,7 +100,7 @@ export class EngramClient {
 
   constructor(projectRoot: string, logger?: PersonaLogger, options?: EngramTransportOptions) {
     this.projectRoot = projectRoot;
-    this.cache = new EngramCacheStore(projectRoot);
+    this.cache = new EngramCacheStore(projectRoot, options?.home);
     this.logger = logger;
     this.options = options ?? {};
   }

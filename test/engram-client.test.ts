@@ -4,16 +4,22 @@ import * as path from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  ENTRY_GLOBAL_CONVENTIONS,
   ENTRY_PROJECT_CONVENTIONS,
   ENTRY_USER_ROLE,
   EngramClient,
   EngramUnavailableError,
 } from "../src/engram-client.ts";
+import { cachePath } from "../src/storage-paths.ts";
 import { makeTempDir, removeDir } from "./helpers/tmp.ts";
 
 const FIXTURE = fileURLToPath(new URL("./helpers/fake-engram.ts", import.meta.url));
 
-const dirs: string[] = [];
+// The client persists its id cache under ~/.persona; every client gets an
+// explicit home override so the tests never touch the real one.
+const HOME = makeTempDir("persona-client-home-");
+
+const dirs: string[] = [HOME];
 const clients: EngramClient[] = [];
 
 function makeRoot(): string {
@@ -28,6 +34,7 @@ function makeClient(projectRoot: string, storePath: string, extraArgs: string[] 
     args: [FIXTURE, storePath, ...extraArgs],
     connectTimeoutMs: 10_000,
     callTimeoutMs: 10_000,
+    home: HOME,
   });
   clients.push(client);
   return client;
@@ -75,6 +82,37 @@ test("project entries are saved with project scope", async () => {
   assert.equal(payload?.conventions?.length, 1);
 });
 
+test("project entries are not found from another project root", async () => {
+  const root = makeRoot();
+  const store = path.join(root, "store.json");
+  const writer = makeClient(root, store);
+
+  await writer.save(ENTRY_PROJECT_CONVENTIONS, { conventions: [{ text: "Rule", saved_at: "today" }] });
+
+  // The client sends all_projects only for personal entries: a project entry
+  // saved under a different root must stay invisible from this one.
+  const reader = makeClient(makeRoot(), store);
+  assert.equal(await reader.get(ENTRY_PROJECT_CONVENTIONS), null);
+});
+
+test("global conventions use personal scope and are found from another project", async () => {
+  const root = makeRoot();
+  const store = path.join(root, "store.json");
+  const writer = makeClient(root, store);
+
+  await writer.save(ENTRY_GLOBAL_CONVENTIONS, { conventions: [{ text: "Rule", saved_at: "today" }] });
+
+  const onDisk = JSON.parse(fs.readFileSync(store, "utf-8"));
+  assert.equal(onDisk.entries[0].scope, "personal");
+  assert.equal(onDisk.entries[0].topic_key, "persona/global-conventions");
+
+  // A different project root starts with a cold cache and must relocate the
+  // entry via mem_search across projects.
+  const reader = makeClient(makeRoot(), store);
+  const payload = await reader.get<{ conventions?: unknown[] }>(ENTRY_GLOBAL_CONVENTIONS);
+  assert.equal(payload?.conventions?.length, 1);
+});
+
 test("a stale cached id falls back to mem_search and repairs the cache", async () => {
   const root = makeRoot();
   const store = path.join(root, "store.json");
@@ -82,14 +120,14 @@ test("a stale cached id falls back to mem_search and repairs the cache", async (
   await writer.save(ENTRY_USER_ROLE, { role: "analyst" });
   await writer.close();
 
-  const cachePath = path.join(root, ".opencode", ".persona-cache.json");
-  fs.writeFileSync(cachePath, JSON.stringify({ [ENTRY_USER_ROLE.key]: "999" }));
+  const cacheFile = cachePath(root, HOME);
+  fs.writeFileSync(cacheFile, JSON.stringify({ [ENTRY_USER_ROLE.key]: "999" }));
 
   const reader = makeClient(root, store);
   const payload = await reader.get<{ role?: string }>(ENTRY_USER_ROLE);
   assert.equal(payload?.role, "analyst");
 
-  const repaired = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
+  const repaired = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
   assert.notEqual(repaired[ENTRY_USER_ROLE.key], "999");
 });
 
@@ -105,6 +143,7 @@ test("a missing binary degrades with EngramUnavailableError", async () => {
     command: path.join(root, "does-not-exist.exe"),
     args: ["mcp"],
     connectTimeoutMs: 5000,
+    home: HOME,
   });
   clients.push(client);
   await assert.rejects(client.get(ENTRY_USER_ROLE), EngramUnavailableError);
@@ -116,6 +155,7 @@ test("a hung handshake degrades via timeout without blocking", async () => {
     command: process.execPath,
     args: [FIXTURE, path.join(root, "store.json"), "--hang"],
     connectTimeoutMs: 500,
+    home: HOME,
   });
   clients.push(client);
   await assert.rejects(client.get(ENTRY_USER_ROLE), EngramUnavailableError);

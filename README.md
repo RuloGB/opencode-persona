@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="1280" height="640" alt="opencode-persona — one project, every role, the right assistant for each teammate" src=".github/social-preview.png" />
+  <img width="1280" height="640" alt="opencode-persona — one project, every role, the right assistant for each teammate" src="assets/branding/persona-banner.png" />
 </p>
 
 <p align="center">

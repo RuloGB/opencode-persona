@@ -5,23 +5,29 @@ on:
     tags:
       - "v*"
 
+# id-token enables npm trusted publishing (OIDC): no NPM_TOKEN secret, and the
+# npm account's 2FA-on-publish requirement (EOTP) does not apply to CI.
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # No registry-url here: setup-node would write an .npmrc that expands
+      # ${NODE_AUTH_TOKEN}, which no longer exists under trusted publishing.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm >= 11.5; Node 22 bundles npm 10.
+      - name: Update npm for trusted publishing
+        run: npm install -g npm@11
 
       - name: Verify tag matches package.json version
         run: |

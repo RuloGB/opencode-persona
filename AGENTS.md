@@ -20,7 +20,8 @@ src/
 ├── engram-client.ts  ← Engram MCP client (`engram mcp` subprocess, timeouts)
 ├── logger.ts         ← diagnostics log -> ~/.persona/persona.log
 ├── preferences.ts    ← user-preferences domain (language, detail)
-├── prompts.ts        ← model-facing texts (bootstrap, announcement, tools)
+├── prompts.ts        ← model-facing texts (bootstrap, guidance, tools) and
+│                       the user-facing role announcement line
 ├── roles.ts          ← roles domain: catalog and instruction loading
 └── storage-paths.ts  ← global storage layout under ~/.persona (paths,
                         project key, projects index)
@@ -69,12 +70,18 @@ the first public release when `title`/`searchQuery` moved from Spanish to Englis
 All of them are injected on the first `chat.message` of each session: role +
 preferences + conventions (global and project rendered as one section; a rule
 present in both scopes is shown only once, under the project block), with the
-kickoff announcement always last. Preferences and each conventions scope
+session guidance always last. Preferences and each conventions scope
 degrade separately and never prevent injecting the role; a failure reading
 the role is retried on the next message.
 
+The user-facing active-role announcement (`✨ Persona plugin: active role -
+Developer`) is NOT requested from the model: prompt compliance is
+probabilistic and some models skipped it. The plugin prepends the line itself
+to the first completed assistant text of the session via the
+`experimental.text.complete` hook (always English, first reply only).
+
 The read-only tool `get_persona_status` queries all the entries live. The
-session announcement instructs the model to use it when the user asks what
+session guidance instructs the model to use it when the user asks what
 they have recorded in Persona: the injected blocks are labeled as coming from
 the plugin, but without the tool the model tended to answer those questions
 from AGENTS.md (Persona's conventions are not the repo's technical

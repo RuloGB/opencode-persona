@@ -27,6 +27,7 @@ import {
 import {
   BOOTSTRAP_PROMPT,
   PERSONA_STATUS_TOOL_DESCRIPTION,
+  ROLE_SESSION_GUIDANCE,
   SAVE_CONVENTION_TOOL_DESCRIPTION,
   SAVE_PREFERENCES_TOOL_DESCRIPTION,
   SAVE_ROLE_TOOL_DESCRIPTION,
@@ -45,6 +46,9 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
   const logger = new PersonaLogger(baseDir);
   const engram = new EngramClient(baseDir, logger);
   const handledSessions = new Set<string>();
+  // Sessions whose first assistant reply still needs the role announcement
+  // prepended (consumed by the experimental.text.complete hook).
+  const pendingAnnouncements = new Map<string, Role>();
 
   registerProject(baseDir); // best-effort (never throws): keeps the ~/.persona projects index current
 
@@ -289,8 +293,8 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
         const sections: string[] = [role ? buildRoleContext(role, projectRoot) : BOOTSTRAP_PROMPT];
         if (preferencesContext) sections.push(preferencesContext);
         if (conventionsContext) sections.push(conventionsContext);
-        // The announcement goes last: its kickoff instruction must be the last thing the model reads.
-        if (role) sections.push(buildRoleAnnouncement(role));
+        // The guidance goes last: its instructions must be the last thing the model reads.
+        if (role) sections.push(ROLE_SESSION_GUIDANCE);
         const text = sections.join("\n\n");
 
         output.parts.push({
@@ -309,10 +313,31 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
             ` (preferences=${preferencesContext !== null}, conventions=${conventionsContext !== null})`
         );
 
-        if (role) notifyRoleLoaded(role);
+        if (role) {
+          pendingAnnouncements.set(sessionID, role);
+          notifyRoleLoaded(role);
+        }
       } catch (err) {
         // The plugin must never block the user's message.
         logger.error("error in chat.message", err);
+      }
+    },
+
+    // The active-role announcement is written by the plugin, never by the
+    // model: asking the model to start its reply with the line was
+    // probabilistic and some models skipped it. Prepending it to the first
+    // completed assistant text of the session guarantees the user always
+    // sees which role is active.
+    "experimental.text.complete": async (input, output) => {
+      try {
+        const role = pendingAnnouncements.get(input.sessionID);
+        if (!role) return;
+        pendingAnnouncements.delete(input.sessionID);
+        output.text = `${buildRoleAnnouncement(role)}\n\n${output.text}`;
+        logger.log(`role announcement prepended to the first reply of session ${input.sessionID}`);
+      } catch (err) {
+        // The plugin must never break the reply.
+        logger.error("error in experimental.text.complete", err);
       }
     },
 

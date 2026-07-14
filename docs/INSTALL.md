@@ -97,10 +97,10 @@ Rebuild (`npm run build`) after every source change. This repository also dogfoo
 
 ## Verification
 
-In the first session, the plugin introduces itself, asks for the user's role (options 1-4), and saves it on answer; the confirmation also offers the optional configuration (language, level of detail, and working conventions — project or global) with example phrases to do it right then or in any future session. In later sessions, the assistant's reply starts with the active-role announcement:
+In the first session, the plugin introduces itself, asks for the user's role (options 1-4), and saves it on answer; the confirmation also offers the optional configuration (language, level of detail, and working conventions — project or global) with example phrases to do it right then or in any future session. In later sessions, the plugin itself prepends the active-role announcement to the assistant's first reply (always in English, first reply of the session only — it does not depend on the model remembering to write it):
 
 ```
-✨ Persona plugin: active role — Developer.
+✨ Persona plugin: active role - Developer
 ```
 
 All plugin activity is logged to `~/.persona/persona.log` (a single file shared by all your projects; each line is tagged with the project folder name); check it if something does not behave as expected.

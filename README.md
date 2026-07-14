@@ -43,7 +43,7 @@ What makes it work is a deliberate split:
 Every reply produced by the plugin opens with the `✨ Persona plugin:` marker, so you always know when Persona is driving:
 
 ```
-✨ Persona plugin: active role — Developer.
+✨ Persona plugin: active role - Developer
 ```
 
 ## Quick Start

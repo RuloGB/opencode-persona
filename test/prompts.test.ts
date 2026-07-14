@@ -4,6 +4,7 @@ import {
   BOOTSTRAP_PROMPT,
   LANGUAGE_INSTRUCTION,
   PERSONA_PREFIX,
+  ROLE_SESSION_GUIDANCE,
   SAVE_CONVENTION_TOOL_DESCRIPTION,
   buildPersonaStatusResult,
   buildRoleAnnouncement,
@@ -12,17 +13,14 @@ import {
   buildSaveRoleResult,
 } from "../src/prompts.ts";
 
-test("the role announcement states how to change roles and how to query the status", () => {
-  const text = buildRoleAnnouncement("qa");
-  assert.ok(text.includes("active role — QA"));
-  assert.ok(text.includes("save_user_role"));
-  assert.ok(text.includes("get_persona_status"));
+test("the session guidance states how to change roles and how to query the status", () => {
+  assert.ok(ROLE_SESSION_GUIDANCE.includes("save_user_role"));
+  assert.ok(ROLE_SESSION_GUIDANCE.includes("get_persona_status"));
 });
 
-test("the role announcement is scoped to the first reply of the session only", () => {
-  const text = buildRoleAnnouncement("developer");
-  assert.ok(text.includes("ONLY to your very first reply"));
-  assert.ok(text.includes("do NOT start with that line"));
+test("the role announcement is the exact user-facing line the plugin prepends", () => {
+  assert.equal(buildRoleAnnouncement("developer"), "✨ Persona plugin: active role - Developer");
+  assert.equal(buildRoleAnnouncement("qa"), "✨ Persona plugin: active role - QA");
 });
 
 test("buildSaveRoleResult distinguishes persisted from session-only", () => {
@@ -128,7 +126,6 @@ test("buildPersonaStatusResult lists global and project conventions separately",
 
 test("every plugin reply demands the ✨ prefix from the model", () => {
   const outputs = [
-    buildRoleAnnouncement("developer"),
     buildSaveRoleResult("developer", true, "ctx", true),
     buildSaveRoleResult("developer", true, "ctx", false),
     buildSaveRoleResult("developer", false, "ctx", false),
@@ -150,7 +147,7 @@ test("every plugin reply demands the ✨ prefix from the model", () => {
 test("every model-facing prompt states the language-matching rule", () => {
   const outputs = [
     BOOTSTRAP_PROMPT,
-    buildRoleAnnouncement("developer"),
+    ROLE_SESSION_GUIDANCE,
     buildSaveRoleResult("developer", true, "ctx", true),
     buildSaveRoleResult("developer", true, "ctx", false),
     buildSaveRoleResult("developer", false, "ctx", false),

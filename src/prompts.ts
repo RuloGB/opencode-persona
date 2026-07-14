@@ -74,26 +74,24 @@ export const BOOTSTRAP_PROMPT = [
   "Do not handle any other task until you have done so.",
 ].join("\n");
 
+// User-facing, not model-facing: the plugin itself prepends this line to the
+// first assistant reply of the session (experimental.text.complete hook), so
+// it appears regardless of the model. Always English by design.
 export function buildRoleAnnouncement(role: Role): string {
-  return [
-    "",
-    "---",
-    LANGUAGE_INSTRUCTION,
-    "The announcement below applies ONLY to your very first reply of this",
-    "session, the one that answers this same message. Start that first reply",
-    `with this line, with nothing before it, keeping the "${PERSONA_PREFIX}"`,
-    "prefix verbatim and translating the rest into that reply language:",
-    `${PERSONA_PREFIX} active role — ${ROLE_LABEL[role]}.`,
-    "In every later reply of this session do NOT start with that line or",
-    "repeat this announcement in any form; reply normally.",
-    "Then handle the user's request, applying the role instructions above",
-    "for the whole session.",
-    "If the user asks to change roles, call the save_user_role tool with the new value.",
-    "If they ask what is recorded or configured in Persona (role, preferences, or",
-    "conventions), call the get_persona_status tool and answer from its result;",
-    "that is NOT answered from AGENTS.md or other repository files.",
-  ].join("\n");
+  return `${PERSONA_PREFIX} active role - ${ROLE_LABEL[role]}`;
 }
+
+export const ROLE_SESSION_GUIDANCE = [
+  "",
+  "---",
+  LANGUAGE_INSTRUCTION,
+  "Handle the user's request, applying the role instructions above",
+  "for the whole session.",
+  "If the user asks to change roles, call the save_user_role tool with the new value.",
+  "If they ask what is recorded or configured in Persona (role, preferences, or",
+  "conventions), call the get_persona_status tool and answer from its result;",
+  "that is NOT answered from AGENTS.md or other repository files.",
+].join("\n");
 
 export function buildSaveRoleResult(
   role: Role,

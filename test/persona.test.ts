@@ -53,6 +53,10 @@ async function makePlugin(root: string, parentBySession: Record<string, string |
   return hooks as {
     tool: Record<string, { execute: (args: Record<string, unknown>, ctx: unknown) => Promise<string> }>;
     "chat.message": (input: unknown, output: unknown) => Promise<void>;
+    "experimental.text.complete": (
+      input: { sessionID: string; messageID: string; partID: string },
+      output: { text: string }
+    ) => Promise<void>;
   };
 }
 
@@ -93,8 +97,50 @@ test("after saving the role, a new session injects its instructions", async () =
 
   assert.equal(output.parts.length, 1);
   assert.ok(output.parts[0].text.includes("Test DEV content"));
-  assert.ok(output.parts[0].text.includes("active role — Developer"));
+  assert.ok(output.parts[0].text.includes("Active role instructions (developer — Developer)"));
   assert.ok(output.parts[0].text.includes("save_user_role"), "it must state how to change roles");
+});
+
+test("the plugin prepends the role announcement to the first reply of the session only", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+
+  await hooks["chat.message"]({ sessionID: "s-announce" }, makeOutput("s-announce"));
+
+  const first = { text: "Sure, let me look at that." };
+  await hooks["experimental.text.complete"]({ sessionID: "s-announce", messageID: "m1", partID: "p1" }, first);
+  assert.equal(first.text, "✨ Persona plugin: active role - Developer\n\nSure, let me look at that.");
+
+  const second = { text: "Second reply." };
+  await hooks["experimental.text.complete"]({ sessionID: "s-announce", messageID: "m2", partID: "p2" }, second);
+  assert.equal(second.text, "Second reply.", "later replies must stay untouched");
+});
+
+test("without a saved role no announcement is prepended (bootstrap flow)", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+
+  await hooks["chat.message"]({ sessionID: "s-boot-announce" }, makeOutput("s-boot-announce"));
+
+  const reply = { text: "Hi! Choose a role." };
+  await hooks["experimental.text.complete"]({ sessionID: "s-boot-announce", messageID: "m1", partID: "p1" }, reply);
+  assert.equal(reply.text, "Hi! Choose a role.");
+});
+
+test("subagent replies never get the announcement", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root, { "s-sub-announce": "s-parent" });
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+
+  await hooks["chat.message"]({ sessionID: "s-sub-announce" }, makeOutput("s-sub-announce"));
+
+  const reply = { text: "Subagent output." };
+  await hooks["experimental.text.complete"]({ sessionID: "s-sub-announce", messageID: "m1", partID: "p1" }, reply);
+  assert.equal(reply.text, "Subagent output.");
 });
 
 test("injection happens only once per session", async () => {
@@ -146,8 +192,8 @@ test("saved preferences and conventions are injected in the next session", async
   assert.ok(text.includes("Reply language: en"));
   assert.ok(text.includes("Working conventions recorded"));
   assert.ok(text.includes("Commits are written in English"));
-  // The kickoff announcement must come last, after preferences and conventions.
-  assert.ok(text.indexOf("Start that first reply") > text.indexOf("Working conventions recorded"));
+  // The session guidance must come last, after preferences and conventions.
+  assert.ok(text.indexOf("save_user_role") > text.indexOf("Working conventions recorded"));
 });
 
 test("a global convention crosses projects; a project one does not", async () => {
@@ -205,7 +251,7 @@ test("a failure reading one conventions scope still injects the other and the ro
   await hooks["chat.message"]({ sessionID: "s-degraded-global" }, output);
   assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
   const text = output.parts[0].text;
-  assert.ok(text.includes("active role — Developer"));
+  assert.ok(text.includes("Active role instructions (developer — Developer)"));
   assert.ok(text.includes("Commits in English"), "the surviving project scope must still be injected");
   assert.ok(!text.includes("Never use any"));
 
@@ -233,7 +279,7 @@ test("a failure reading the project scope still injects the global scope", async
   await hooks["chat.message"]({ sessionID: "s-degraded-project" }, output);
   assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
   const text = output.parts[0].text;
-  assert.ok(text.includes("active role — Developer"));
+  assert.ok(text.includes("Active role instructions (developer — Developer)"));
   assert.ok(text.includes("Never use any"), "the surviving global scope must still be injected");
   assert.ok(!text.includes("Commits in English"));
 });

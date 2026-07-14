@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 26.5 368 368" width="368" height="368">
+  <!-- Persona icon: chat bubble with a smiling person, redrawn as vector from persona-banner.png -->
+  <defs>
+    <linearGradient id="bubble" gradientUnits="userSpaceOnUse" x1="56" y1="74" x2="353" y2="317">
+      <stop offset="0" stop-color="#7D66FF"/>
+      <stop offset="0.5" stop-color="#6189FF"/>
+      <stop offset="1" stop-color="#41CEFF"/>
+    </linearGradient>
+    <linearGradient id="head" gradientUnits="userSpaceOnUse" x1="170" y1="120" x2="240" y2="195">
+      <stop offset="0" stop-color="#4BDCFF"/>
+      <stop offset="1" stop-color="#68A8FF"/>
+    </linearGradient>
+    <linearGradient id="body" gradientUnits="userSpaceOnUse" x1="138" y1="280" x2="271" y2="280">
+      <stop offset="0" stop-color="#6F9CFF"/>
+      <stop offset="1" stop-color="#8A6CFF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- speech bubble outline with tail (stroke centerline geometry) -->
+  <path d="M 86.5,74.5
+           H 322.5
+           A 30,30 0 0 1 352.5,104.5
+           V 287
+           A 30,30 0 0 1 322.5,317
+           H 152
+           L 100,372
+           Q 112,340 98,315
+           A 41.5,41.5 0 0 1 56.5,273.5
+           V 104.5
+           A 30,30 0 0 1 86.5,74.5
+           Z"
+        fill="none" stroke="url(#bubble)" stroke-width="10"
+        stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- head -->
+  <circle cx="205" cy="156.5" r="40.5" fill="none" stroke="url(#head)" stroke-width="10"/>
+
+  <!-- eyes -->
+  <circle cx="190.5" cy="151" r="4.2" fill="#69F6FF"/>
+  <circle cx="218.5" cy="151" r="4.2" fill="#69F6FF"/>
+
+  <!-- smile: arc of circle c(204.5,148.5) r23 -->
+  <path d="M 188.5,165 A 23,23 0 0 0 220.5,165"
+        fill="none" stroke="#69F6FF" stroke-width="6.5" stroke-linecap="round"/>
+
+  <!-- shoulders: arc of circle c(204.5,311) r72, round caps -->
+  <path d="M 139,283 A 72,72 0 0 1 270,283"
+        fill="none" stroke="url(#body)" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- sparkles (4-point stars) -->
+  <path d="M 352.5,42.5 Q 352.5,70.5 382.5,70.5 Q 352.5,70.5 352.5,98.5 Q 352.5,70.5 322.5,70.5 Q 352.5,70.5 352.5,42.5 Z" fill="#63F1FF"/>
+  <path d="M 384.5,99.5 Q 384.5,111 396,111 Q 384.5,111 384.5,122.5 Q 384.5,111 373,111 Q 384.5,111 384.5,99.5 Z" fill="#68FAFF"/>
+</svg>

@@ -126,7 +126,7 @@ test("buildPersonaStatusResult lists global and project conventions separately",
   assert.ok(text.indexOf("Never use any") < text.indexOf("Commits in English"), "the global block comes first");
 });
 
-test("every plugin reply demands the 🎭 prefix from the model", () => {
+test("every plugin reply demands the ✨ prefix from the model", () => {
   const outputs = [
     buildRoleAnnouncement("developer"),
     buildSaveRoleResult("developer", true, "ctx", true),

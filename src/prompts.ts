@@ -5,7 +5,7 @@ import type { ConventionList, ConventionScope } from "./conventions.ts";
 
 // Shared visual marker: every reply generated from the plugin must start with
 // this prefix so the user can tell at a glance that Persona answered.
-export const PERSONA_PREFIX = "🎭 Persona plugin:";
+export const PERSONA_PREFIX = "✨ Persona plugin:";
 
 const PREFIX_INSTRUCTION = `Start that reply EXACTLY with "${PERSONA_PREFIX}".`;
 
@@ -55,9 +55,9 @@ export const BOOTSTRAP_PROMPT = [
   "No role is configured for this user yet.",
   "Before handling their request you must know their role.",
   LANGUAGE_INSTRUCTION,
-  "Reply with this introduction, translated into that reply language (keep the 🎭 marker",
+  "Reply with this introduction, translated into that reply language (keep the ✨ marker",
   "and the numbered list):",
-  "'🎭 Hi! I'm the Persona plugin: I adapt the assistant to your professional role, save your",
+  "'✨ Hi! I'm the Persona plugin: I adapt the assistant to your professional role, save your",
   "preferences (language and level of detail) and your project's conventions, and remember",
   "them across sessions. Everything stays in your local Engram: it is yours alone and is not",
   "shared with anyone.",

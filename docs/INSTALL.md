@@ -129,6 +129,7 @@ The test suite does not need Engram installed: it uses a fake MCP server include
 | Without Engram | The plugin degrades to default behavior without blocking the session; the role will be asked again once Engram is available. A hung `engram mcp` is cut off by a timeout (8 s). |
 | Missing role file | If the role's `.md` file is missing from `harness/user-roles/`, the assistant runs with its default behavior and says so. |
 | Subagent sessions | Injection only happens in main sessions; subagent sessions are ignored. |
+| Update check | At the start of every main session, the plugin checks npm for a newer published version (5 s timeout) without blocking the session. If found before a reply completes, that reply is prepended with a prominent notice with the new version number; if the check is still in flight, a later reply in the same session shows it instead. The check fails silently on any error (timeout, network, npm outage) and is never cached: each session checks again. |
 | Local cache | `~/.persona/cache/<project>.json` stores local Engram ids, one file per project and per machine (the project is identified by its folder name, mirroring Engram). `~/.persona/projects.json` maps each project folder name to its last known path. |
 | Diagnostics | Everything is logged to `~/.persona/persona.log`, shared across projects; each line is tagged with the project folder name. |
 

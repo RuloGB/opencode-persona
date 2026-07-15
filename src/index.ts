@@ -36,8 +36,10 @@ import {
   buildSaveConventionResult,
   buildSavePreferencesResult,
   buildSaveRoleResult,
+  buildUpdateNotice,
 } from "./prompts.ts";
 import { ROLES, ROLE_LABEL, type Role, buildRoleContext, findProjectRoot, isRole } from "./roles.ts";
+import { checkForNewerVersion, type VersionUpdate } from "./update-check.ts";
 
 export const Persona: Plugin = async ({ client, directory, worktree }) => {
   const cwd = directory ?? worktree ?? process.cwd();
@@ -46,9 +48,17 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
   const logger = new PersonaLogger(baseDir);
   const engram = new EngramClient(baseDir, logger);
   const handledSessions = new Set<string>();
+  // Tracked separately from handledSessions: a failed Engram read below
+  // deletes handledSessions to retry the role lookup on the next message, but
+  // the npm update check must still run exactly once per session regardless.
+  const updateCheckedSessions = new Set<string>();
   // Sessions whose first assistant reply still needs the role announcement
   // prepended (consumed by the experimental.text.complete hook).
   const pendingAnnouncements = new Map<string, Role>();
+  // Same single-shot pattern as pendingAnnouncements, for the npm update
+  // notice; kept as a separate map so neither can clobber the other when
+  // both are pending for the same session.
+  const pendingUpdateNotices = new Map<string, VersionUpdate>();
 
   registerProject(baseDir); // best-effort (never throws): keeps the ~/.persona projects index current
 
@@ -256,6 +266,25 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
           return;
         }
 
+        if (!updateCheckedSessions.has(sessionID)) {
+          updateCheckedSessions.add(sessionID);
+          try {
+            void checkForNewerVersion(logger)
+              .then((update) => {
+                // The session may already be gone (session.deleted) by the
+                // time this resolves; never resurrect a dead session's entry.
+                if (update && updateCheckedSessions.has(sessionID)) {
+                  pendingUpdateNotices.set(sessionID, update);
+                }
+              })
+              .catch((err) => {
+                logger.error("update check failed unexpectedly", err);
+              });
+          } catch (err) {
+            logger.error("could not start the update check", err);
+          }
+        }
+
         logger.log(`first message of session ${sessionID}; resolving role`);
 
         let record: { role?: unknown } | null;
@@ -323,30 +352,64 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
       }
     },
 
-    // The active-role announcement is written by the plugin, never by the
-    // model: asking the model to start its reply with the line was
-    // probabilistic and some models skipped it. Prepending it to the first
-    // completed assistant text of the session guarantees the user always
-    // sees which role is active.
+    // The active-role announcement and the update notice are written by the
+    // plugin, never by the model: asking the model to start its reply with a
+    // line was probabilistic and some models skipped it. Prepending them to
+    // the first completed assistant text of the session guarantees the user
+    // always sees them regardless of the model. Both can be pending at once
+    // (e.g. a role change plus a newer release found the same session); each
+    // gets its own banner and neither may clobber the other.
     "experimental.text.complete": async (input, output) => {
       try {
-        const role = pendingAnnouncements.get(input.sessionID);
-        if (!role) return;
-        pendingAnnouncements.delete(input.sessionID);
-        output.text = `${buildRoleAnnouncement(role)}\n\n${output.text}`;
-        logger.log(`role announcement prepended to the first reply of session ${input.sessionID}`);
+        // Same defensive fallback as chat.message: input.sessionID is typed
+        // as required, but this hook is "experimental" for a reason, and
+        // this project already defends chat.message's own sessionID the same
+        // way. Resolved once, here, so neither map lookup below can miss it
+        // independently.
+        const sessionID =
+          input.sessionID ?? (output as { message?: { sessionID?: string } }).message?.sessionID;
+        if (!sessionID) return;
+
+        const role = pendingAnnouncements.get(sessionID);
+        if (role) pendingAnnouncements.delete(sessionID);
+
+        const update = pendingUpdateNotices.get(sessionID);
+        if (update) pendingUpdateNotices.delete(sessionID);
+
+        const banners: string[] = [];
+        if (role) banners.push(buildRoleAnnouncement(role));
+        if (update) banners.push(buildUpdateNotice(update.currentVersion, update.latestVersion));
+        if (banners.length === 0) return;
+
+        output.text = `${banners.join("\n\n")}\n\n${output.text}`;
+        if (role) logger.log(`role announcement prepended to the first reply of session ${sessionID}`);
+        if (update) {
+          logger.log(
+            `update notice prepended to the first reply of session ${sessionID} (latest=${update.latestVersion})`
+          );
+        }
       } catch (err) {
         // The plugin must never break the reply.
         logger.error("error in experimental.text.complete", err);
       }
     },
 
-    // Diagnostics only; session.updated is skipped as too noisy.
+    // Diagnostics for every session.* event except the noisy session.updated.
+    // session.deleted additionally evicts that session's entries from every
+    // per-session collection below: this is a long-running host process with
+    // no other lifecycle hook available to bound their growth.
     event: async ({ event }) => {
       try {
         const type: string = event?.type ?? "";
         if (type.startsWith("session.") && type !== "session.updated") {
           logger.log(`event received: ${type}`);
+        }
+        if (event && event.type === "session.deleted") {
+          const sessionID = event.properties.info.id;
+          handledSessions.delete(sessionID);
+          pendingAnnouncements.delete(sessionID);
+          updateCheckedSessions.delete(sessionID);
+          pendingUpdateNotices.delete(sessionID);
         }
       } catch {
         // Logging must never break the event flow.

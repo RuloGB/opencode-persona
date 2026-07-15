@@ -1,6 +1,6 @@
 {
   "name": "opencode-persona",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "description": "OpenCode plugin that asks for the user's professional role once, persists it in Engram, and injects role instructions, communication preferences, and project conventions at the start of every session",
   "license": "MIT",
   "author": "Raul Garcia (https://github.com/RuloGB)",

@@ -81,6 +81,16 @@ export function buildRoleAnnouncement(role: Role): string {
   return `${PERSONA_PREFIX} active role - ${ROLE_LABEL[role]}`;
 }
 
+// Assistant reply of the session when the update check (update-check.ts)
+export function buildUpdateNotice(currentVersion: string, latestVersion: string): string {
+  return [
+    "---",
+    `${PERSONA_PREFIX} 🚨 UPDATE AVAILABLE: opencode-persona ${latestVersion} is out (you're running ${currentVersion}).`,
+    `Pin it in opencode.json: "opencode-persona@${latestVersion}".`,
+    "---",
+  ].join("\n");
+}
+
 export const ROLE_SESSION_GUIDANCE = [
   "",
   "---",

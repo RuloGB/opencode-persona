@@ -11,6 +11,7 @@ import {
   buildSaveConventionResult,
   buildSavePreferencesResult,
   buildSaveRoleResult,
+  buildUpdateNotice,
 } from "../src/prompts.ts";
 
 test("the session guidance states how to change roles and how to query the status", () => {
@@ -21,6 +22,15 @@ test("the session guidance states how to change roles and how to query the statu
 test("the role announcement is the exact user-facing line the plugin prepends", () => {
   assert.equal(buildRoleAnnouncement("developer"), "✨ Persona plugin: active role - Developer");
   assert.equal(buildRoleAnnouncement("qa"), "✨ Persona plugin: active role - QA");
+});
+
+test("the update notice states both versions and is visually distinct from the role announcement", () => {
+  const notice = buildUpdateNotice("2.1.7", "2.2.0");
+  assert.ok(notice.includes(PERSONA_PREFIX));
+  assert.ok(notice.includes("2.1.7"), "must state the currently installed version");
+  assert.ok(notice.includes("2.2.0"), "must state the new version");
+  assert.ok(notice.includes("UPDATE AVAILABLE"));
+  assert.notEqual(notice, buildRoleAnnouncement("developer"), "must not read like the routine role announcement");
 });
 
 test("buildSaveRoleResult distinguishes persisted from session-only", () => {

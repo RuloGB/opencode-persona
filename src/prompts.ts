@@ -20,7 +20,7 @@ export const SAVE_ROLE_TOOL_DESCRIPTION =
   "the user is asked, as soon as you interpret their answer (a number, the role " +
   "name, or a free-form description); (2) whenever the user asks to change " +
   "roles (e.g. 'change my role to QA'). Exact accepted values: developer, " +
-  "architect, analyst, qa.";
+  "architect, analyst, qa, delivery.";
 
 export const SAVE_PREFERENCES_TOOL_DESCRIPTION =
   "Saves or updates the user's communication preferences when they express one " +
@@ -68,6 +68,7 @@ export const BOOTSTRAP_PROMPT = [
   "2. Software Architect",
   "3. Analyst",
   "4. QA",
+  "5. Delivery Lead",
   "",
   "Tip: type the number and press Enter. Once saved, I'll show you what else you can configure (optional).'",
   "As soon as the role is clear, call the save_user_role tool with the matching value.",

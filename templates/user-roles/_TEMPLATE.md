@@ -8,7 +8,7 @@ Copy this file as `<ROLE>.md` to create or revise a role. Rules:
 - Do not declare permissions or tools: the user grants them at runtime, when the
   assistant requests them.
 - The plugin does not load this file as a role; it only loads the files mapped in
-  `roles.ts` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`).
+  `roles.ts` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`, `DL.md`).
 
 ---
 

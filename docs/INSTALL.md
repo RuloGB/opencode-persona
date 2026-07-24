@@ -1,6 +1,6 @@
 # Installing the Persona plugin for OpenCode
 
-Persona detects each user's professional role (developer, architect, analyst, or QA) the first time they open a session, saves it in Engram (once per user and machine), and from then on automatically loads that role's instructions in every OpenCode session.
+Persona detects each user's professional role (developer, architect, analyst, QA, or delivery lead) the first time they open a session, saves it in Engram (once per user and machine), and from then on automatically loads that role's instructions in every OpenCode session.
 
 Besides the role, Persona persists in Engram the user's **communication preferences** (reply language and level of detail, personal scope) and the user's **working conventions** — per project (project scope) or global across all of their projects (personal scope) — and injects all of them at the start of every session. Just say them in the chat: "always reply in English", "be more brief", "commits in this repo are written in English", "in every project: never use `any`".
 
@@ -60,8 +60,9 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
    | Software Architect | `harness/user-roles/ARQ.md` |
    | Analyst | `harness/user-roles/BA.md` |
    | QA | `harness/user-roles/QA.md` |
+   | Delivery Lead | `harness/user-roles/DL.md` |
 
-   `_TEMPLATE.md` documents the expected structure; the plugin only loads the four files above.
+   `_TEMPLATE.md` documents the expected structure; the plugin only loads the five files above.
 
 3. **Nothing to add to `.gitignore`**: the plugin writes no files inside your project. Its runtime files live under `~/.persona/` in your user home: `persona.log` (diagnostics), `cache/<project>.json` (local Engram ids), and `projects.json` (an index of the projects where the plugin has run).
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { after, test } from "node:test";
-import { buildRoleContext, findProjectRoot, isRole } from "../src/roles.ts";
+import { ROLES, buildRoleContext, findProjectRoot, isRole } from "../src/roles.ts";
 import { makeTempDir, removeDir } from "./helpers/tmp.ts";
 
 const dirs: string[] = [];
@@ -22,8 +22,23 @@ after(() => dirs.forEach(removeDir));
 test("isRole accepts only the roles in the catalog", () => {
   assert.equal(isRole("developer"), true);
   assert.equal(isRole("qa"), true);
+  assert.equal(isRole("delivery"), true);
   assert.equal(isRole("manager"), false);
   assert.equal(isRole(1), false);
+});
+
+// The role file name only surfaces through the degraded message; asserting the
+// template exists keeps a new role from shipping without its instructions.
+test("every role in the catalog ships a template file", () => {
+  const root = makeProject(false);
+  for (const role of ROLES) {
+    const fileName = buildRoleContext(role, root).match(/harness\/user-roles\/(\S+\.md)/)?.[1];
+    assert.ok(fileName, `no role file resolved for '${role}'`);
+    assert.ok(
+      fs.existsSync(path.join(import.meta.dirname, "..", "templates", "user-roles", fileName)),
+      `templates/user-roles/${fileName} is missing for role '${role}'`
+    );
+  }
 });
 
 test("findProjectRoot walks up to the folder containing harness/user-roles", () => {

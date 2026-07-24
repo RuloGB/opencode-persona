@@ -35,7 +35,7 @@ test/
                         dogfoods the plugin; needs `npm install` at the root
 templates/
 └── user-roles/       ← per-role instruction templates (DEV.md, ARQ.md,
-                        BA.md, QA.md) and _TEMPLATE.md, the shared role template
+                        BA.md, QA.md, DL.md) and _TEMPLATE.md, the shared role template
 harness/
 └── user-roles/       ← git-ignored: each consuming project creates this
                         folder (e.g. from templates/user-roles/) and owns it
@@ -53,7 +53,7 @@ README.md             ← public plugin documentation
 
 | Entry (`topic_key`) | Scope | Content | Tool that writes it |
 |---------------------|-------|---------|---------------------|
-| `persona/user-role` | personal | User's role (developer/architect/analyst/qa) | `save_user_role` (also for role changes) |
+| `persona/user-role` | personal | User's role (developer/architect/analyst/qa/delivery) | `save_user_role` (also for role changes) |
 | `persona/user-preferences` | personal | Reply language and level of detail | `save_user_preferences` (merge: what is not provided is kept) |
 | `persona/project-conventions` | project | Project working rules (max. 20, no duplicates) | `save_convention` (default scope) |
 | `persona/global-conventions` | personal | Working rules applied in all of the user's projects (max. 20, no duplicates) | `save_convention` with `scope: "global"` |

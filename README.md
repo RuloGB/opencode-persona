@@ -22,7 +22,7 @@
 
 ## Built for teams: one project, many roles
 
-A real project is not worked by a single kind of person. A **business analyst**, a **developer**, a **software architect** and a **QA engineer** all open OpenCode in the *same* repository, over the *same* code and the *same* documents — but each one needs the assistant to behave in a completely different way.
+A real project is not worked by a single kind of person. A **business analyst**, a **developer**, a **software architect**, a **QA engineer** and a **delivery lead** all open OpenCode in the *same* repository, over the *same* code and the *same* documents — but each one needs the assistant to behave in a completely different way.
 
 Take one feature, *"add discount codes at checkout"*:
 
@@ -30,12 +30,13 @@ Take one feature, *"add discount codes at checkout"*:
 - The **developer** needs an implementation: the files it touches, the code, the tests, and the technical trade-offs.
 - The **architect** needs the decision first: whether it fits the current architecture, the alternatives with their trade-offs, and an ADR to record it.
 - The **QA engineer** needs to break it: a test plan of happy, edge, and error cases derived from those acceptance criteria.
+- The **delivery lead** needs it delivered: the slices it splits into, what blocks it, the risks, and the impact on the date.
 
 Same repo. Same feature. Same `opencode` command. Without Persona, everyone gets the same generic assistant and has to re-explain their role every session. **Persona resolves this** — it loads each teammate's role automatically, so the analyst gets an analyst's assistant and the developer gets a developer's, from the exact same project.
 
 What makes it work is a deliberate split:
 
-- **The role definitions are shared.** How each role behaves *in this project* lives in `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`), versioned in the repo. The team agrees on them once and they travel with the code.
+- **The role definitions are shared.** How each role behaves *in this project* lives in `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`, `DL.md`), versioned in the repo. The team agrees on them once and they travel with the code.
 - **The role assignment is personal.** Which role *you* are is saved locally, per user and per machine — never shared. Your teammate on the same repo runs as their role; you run as yours.
 
 ---
@@ -79,7 +80,7 @@ Add the plugin to your project's `opencode.json` (create it in the project root 
 
 OpenCode installs the package automatically the next time it starts in that project — no `npm install` required.
 
-**2. Set up the role instructions.** Persona reads one instruction file per role from `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`), which you adapt to how each role should behave in this project.
+**2. Set up the role instructions.** Persona reads one instruction file per role from `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`, `DL.md`), which you adapt to how each role should behave in this project.
 
 - **Option A** — the assistant typically creates this folder from the templates as part of the install; just review and tweak the files (create it as below if it's missing).
 - **Option B** — copy the templates in yourself:
@@ -121,7 +122,7 @@ You configure Persona by talking to it. No commands, no config files to hand-edi
 
 | Capability | How you use it | What happens |
 |------------|----------------|--------------|
-| **Role detection & loading** | Answered once on the first session (Developer, Architect, Analyst, QA) | The role's instructions are injected automatically into every future session. Each project defines its own behavior per role in `harness/user-roles/`, so the same role can act differently across projects. |
+| **Role detection & loading** | Answered once on the first session (Developer, Architect, Analyst, QA, Delivery Lead) | The role's instructions are injected automatically into every future session. Each project defines its own behavior per role in `harness/user-roles/`, so the same role can act differently across projects. |
 | **Hot role switching** | "change my role to QA" | The stored role is updated in place — no duplicates, no repeated onboarding. |
 | **Communication preferences** *(personal)* | "always reply in English", "be more brief" | Reply language and level of detail travel with you across every project. Each field updates independently. |
 | **Project conventions** *(project)* | "commits in this repo are written in English" | Up to 20 conventions per project, injected only in your sessions inside that project. |
@@ -172,7 +173,7 @@ See the [Quick Start](#quick-start) above to get running, or [docs/INSTALL.md](d
 │   └── *.ts                 # Internal modules (roles, preferences, conventions, database client...)
 ├── test/                    # Test suite (node:test + a fake MCP server)
 ├── templates/
-│   └── user-roles/          # Role instruction templates: DEV.md, ARQ.md, BA.md, QA.md, _TEMPLATE.md
+│   └── user-roles/          # Role instruction templates: DEV.md, ARQ.md, BA.md, QA.md, DL.md, _TEMPLATE.md
 ├── docs/
 │   └── INSTALL.md           # Detailed installation guide, verification, and troubleshooting
 └── dist/                    # Built ESM output (generated by `npm run build`, published to npm)

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export const ROLES = ["developer", "architect", "analyst", "qa"] as const;
+export const ROLES = ["developer", "architect", "analyst", "qa", "delivery"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -10,6 +10,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   architect: "Software Architect",
   analyst: "Analyst",
   qa: "QA",
+  delivery: "Delivery Lead",
 };
 
 const ROLE_INSTRUCTIONS_DIR = path.join("harness", "user-roles");
@@ -20,6 +21,7 @@ const ROLE_FILE: Record<Role, string> = {
   architect: "ARQ.md",
   analyst: "BA.md",
   qa: "QA.md",
+  delivery: "DL.md",
 };
 
 export function isRole(value: unknown): value is Role {

@@ -13,6 +13,7 @@ import {
   buildSaveRoleResult,
   buildUpdateNotice,
 } from "../src/prompts.ts";
+import { ROLES, ROLE_LABEL } from "../src/roles.ts";
 
 test("the session guidance states how to change roles and how to query the status", () => {
   assert.ok(ROLE_SESSION_GUIDANCE.includes("save_user_role"));
@@ -22,6 +23,18 @@ test("the session guidance states how to change roles and how to query the statu
 test("the role announcement is the exact user-facing line the plugin prepends", () => {
   assert.equal(buildRoleAnnouncement("developer"), "✨ Persona plugin: active role - Developer");
   assert.equal(buildRoleAnnouncement("qa"), "✨ Persona plugin: active role - QA");
+  assert.equal(buildRoleAnnouncement("delivery"), "✨ Persona plugin: active role - Delivery Lead");
+});
+
+// The bootstrap list is written by hand (it is model-facing prose): this keeps
+// it from drifting when a role is added to the catalog.
+test("the bootstrap offers every role in the catalog, numbered", () => {
+  ROLES.forEach((role, i) => {
+    assert.ok(
+      BOOTSTRAP_PROMPT.includes(`${i + 1}. ${ROLE_LABEL[role]}`),
+      `the bootstrap must offer "${ROLE_LABEL[role]}" as option ${i + 1}`
+    );
+  });
 });
 
 test("the update notice states both versions and is visually distinct from the role announcement", () => {

@@ -8,6 +8,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/RuloGB/opencode-persona/releases/latest"><img src="https://img.shields.io/github/v/release/RuloGB/opencode-persona?label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/opencode-persona.svg" alt="license"></a>
+  <a href="https://opencode.ai"><img src="https://img.shields.io/badge/OpenCode-plugin-000?logo=opencode&logoColor=white" alt="OpenCode plugin"></a>
+</p>
+
+<p align="center">
   <a href="#built-for-teams-one-project-many-roles">Built for teams</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#requirements">Requirements</a> &bull;

@@ -86,6 +86,14 @@ Add the plugin to your project's `opencode.json` (create it in the project root 
 
 OpenCode installs the package automatically the next time it starts in that project — no `npm install` required.
 
+> **Pin the version.** An entry without a version (`"opencode-persona"`) is resolved **once**: OpenCode caches that install and keeps reusing it, so the project stays on whatever version was current the day you installed it — even after a newer one is published. `@latest` behaves the same way. Write the version you want instead, and bump it to update:
+>
+> ```json
+> { "plugin": ["opencode-persona@2.2.1"] }
+> ```
+>
+> See [Where the plugin lives, updating, and uninstalling](docs/INSTALL.md#where-the-plugin-lives-updating-and-uninstalling) if a project is already stuck on an old version.
+
 **2. Set up the role instructions.** Persona reads one instruction file per role from `harness/user-roles/` (`DEV.md`, `ARQ.md`, `BA.md`, `QA.md`, `DL.md`), which you adapt to how each role should behave in this project.
 
 - **Option A** — the assistant typically creates this folder from the templates as part of the install; just review and tweak the files (create it as below if it's missing).

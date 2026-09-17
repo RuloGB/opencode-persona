@@ -34,12 +34,12 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
    }
    ```
 
-   Either way, OpenCode installs the package automatically the next time it starts in that project. To pin an exact version (recommended for teams, so everyone runs the same one):
+   Either way, OpenCode installs the package automatically the next time it starts in that project. Pinning an exact version is recommended — it keeps a team on the same one, and it is what lets you update later (a version-less entry stays on the version resolved by its first install):
 
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
-     "plugin": ["opencode-persona@2.0.0"]
+     "plugin": ["opencode-persona@2.2.1"]
    }
    ```
 
@@ -70,8 +70,19 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 
 ## Where the plugin lives, updating, and uninstalling
 
-- **Where it lives**: OpenCode installs plugin packages with its bundled Bun into its own cache (`~/.cache/opencode/`), not into your project. Your project only carries the one-line `plugin` entry.
-- **Updating**: if you pinned a version, change the pin (e.g. `"opencode-persona@2.1.0"`) and restart OpenCode. If you did not pin, OpenCode resolves the latest version when it first installs the plugin and then reuses its cached copy; pinning a newer version is the reliable way to force an update.
+- **Where it lives**: OpenCode installs plugin packages with its bundled Bun into its own cache, not into your project. Each entry of the `plugin` array gets its own folder under `~/.cache/opencode/packages/`, named after the entry itself (`opencode-persona`, `opencode-persona@2.2.1`, ...). Your project only carries the one-line `plugin` entry.
+- **Updating**: change the pin (e.g. `"opencode-persona@2.2.1"`) and restart OpenCode. That is the only reliable way to update, because a cache folder resolves its version **once**, on the first install, and then reuses it forever. An entry without a version, and `@latest` too, therefore keeps running the version that was current the day the project first started with it, no matter how many releases follow.
+- **Unpinning a project that is already stuck**: pinning the new version is enough for that project. To also stop the version-less folders from serving an old copy to other projects, delete them and restart OpenCode:
+
+  ```bash
+  # macOS/Linux
+  rm -rf ~/.cache/opencode/packages/opencode-persona ~/.cache/opencode/packages/opencode-persona@latest
+  ```
+
+  ```powershell
+  # Windows (PowerShell)
+  Remove-Item -Recurse -Force "$env:USERPROFILE\.cache\opencode\packages\opencode-persona", "$env:USERPROFILE\.cache\opencode\packages\opencode-persona@latest"
+  ```
 - **Uninstalling**: remove the `"opencode-persona"` entry from the `plugin` array. Optionally delete the cached copy under `~/.cache/opencode/` and the plugin's runtime files under `~/.persona/`.
 
 ## Local development (contributors)
@@ -143,4 +154,4 @@ The test suite does not need Engram installed: it uses a fake MCP server include
 | The role is announced but no instructions apply | The role's `.md` file is missing | Create the matching file in `harness/user-roles/`; until then the assistant notes it and uses its default behavior |
 | The role is asked again | Saving to Engram failed in the previous session | Review `persona.log`; with Engram available, the next save persists |
 | No injection appears in a session | It is a subagent session | Expected: Persona ignores subagent sessions and only injects in main sessions |
-| An old version keeps running after publishing a new one | OpenCode reuses its cached copy | Pin the new version in `opencode.json` (e.g. `"opencode-persona@2.1.0"`) and restart OpenCode |
+| An old version keeps running after publishing a new one | The `plugin` entry has no version (or uses `@latest`), so OpenCode keeps reusing the cache folder it resolved on the first install | Pin the new version in `opencode.json` (e.g. `"opencode-persona@2.2.1"`) and restart OpenCode; see [updating](#where-the-plugin-lives-updating-and-uninstalling) to clear the stale cache folders too |

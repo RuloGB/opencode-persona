@@ -92,6 +92,11 @@ async function makePlugin(root: string, parentBySession: Record<string, string |
       input: { sessionID: string; messageID: string; partID: string },
       output: { text: string }
     ) => Promise<void>;
+    "experimental.chat.system.transform": (
+      input: { sessionID?: string; model: unknown },
+      output: { system: string[] }
+    ) => Promise<void>;
+    event: (input: { event: unknown }) => Promise<void>;
   };
 }
 
@@ -99,18 +104,98 @@ function makeOutput(sessionID: string): { message: { id: string; sessionID: stri
   return { message: { id: `msg-${sessionID}`, sessionID }, parts: [] };
 }
 
+// The prompt a normal (non-internal) OpenCode agent puts in system[0].
+const AGENT_SYSTEM_PROMPT = "You are opencode, an interactive CLI coding agent.";
+
+// Runs the system-prompt hook for a session and returns whatever the plugin
+// appended to `system` (empty string when it injected nothing).
+async function injectedSystem(
+  hooks: Awaited<ReturnType<typeof makePlugin>>,
+  sessionID: string,
+  base: string[] = [AGENT_SYSTEM_PROMPT]
+): Promise<string> {
+  const output = { system: [...base] };
+  await hooks["experimental.chat.system.transform"]({ sessionID, model: {} }, output);
+  assert.deepEqual(output.system.slice(0, base.length), base, "existing system blocks must stay untouched");
+  return output.system.slice(base.length).join("\n\n");
+}
+
+// chat.message followed by the system hook: the shape almost every test needs.
+async function contextFor(
+  hooks: Awaited<ReturnType<typeof makePlugin>>,
+  sessionID: string
+): Promise<string> {
+  const output = makeOutput(sessionID);
+  await hooks["chat.message"]({ sessionID }, output);
+  assert.equal(output.parts.length, 0, "the context must never travel as a message part");
+  return injectedSystem(hooks, sessionID);
+}
+
 test("without a saved role it injects the bootstrap that asks for the role", async () => {
   const { root, store } = makeProject();
   useFakeEngram(store);
   const hooks = await makePlugin(root);
 
-  const output = makeOutput("s-bootstrap");
-  await hooks["chat.message"]({ sessionID: "s-bootstrap" }, output);
+  const text = await contextFor(hooks, "s-bootstrap");
 
-  assert.equal(output.parts.length, 1);
-  assert.ok(output.parts[0].text.includes("No role is configured"));
-  assert.ok(output.parts[0].text.includes("language and level of detail"), "the bootstrap must present what Persona configures");
-  assert.ok(output.parts[0].text.includes("local Engram"), "the bootstrap must clarify that the data is local to the user");
+  assert.ok(text.includes("No role is configured"));
+  assert.ok(text.includes("language and level of detail"), "the bootstrap must present what Persona configures");
+  assert.ok(text.includes("local Engram"), "the bootstrap must clarify that the data is local to the user");
+});
+
+test("the context is injected into the system prompt on every call of the session", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+
+  const first = await contextFor(hooks, "s-system-repeat");
+  assert.ok(first.includes("Test DEV content"));
+  // Unlike the old synthetic message part, the system block must be present
+  // on every later LLM call of the session too (this is what survives a
+  // compaction).
+  const second = await injectedSystem(hooks, "s-system-repeat");
+  assert.equal(second, first);
+});
+
+test("internal OpenCode agents never receive the persona context", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+  await contextFor(hooks, "s-internal");
+
+  const titleAgent = await injectedSystem(hooks, "s-internal", [
+    "You are a title generator. Generate a short title for the conversation.",
+  ]);
+  assert.equal(titleAgent, "", "the title model must not see the persona context");
+});
+
+test("an unknown session gets no system injection", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+
+  assert.equal(await injectedSystem(hooks, "s-never-seen"), "");
+  const output = { system: [AGENT_SYSTEM_PROMPT] };
+  await hooks["experimental.chat.system.transform"]({ model: {} }, output);
+  assert.deepEqual(output.system, [AGENT_SYSTEM_PROMPT], "a missing sessionID injects nothing");
+});
+
+test("session.deleted drops the stored context", async () => {
+  const { root, store } = makeProject();
+  useFakeEngram(store);
+  const hooks = await makePlugin(root);
+  await hooks.tool.save_user_role.execute({ role: "developer" }, {});
+
+  assert.ok((await contextFor(hooks, "s-deleted")).includes("Test DEV content"));
+
+  await hooks.event({
+    event: { type: "session.deleted", properties: { info: { id: "s-deleted" } } },
+  });
+
+  assert.equal(await injectedSystem(hooks, "s-deleted"), "", "a deleted session keeps nothing in memory");
 });
 
 test("after saving the role, a new session injects its instructions", async () => {
@@ -127,13 +212,11 @@ test("after saving the role, a new session injects its instructions", async () =
   assert.ok(secondSave.includes("Role saved"));
   assert.ok(!secondSave.includes("always reply in English"), "a later save does not repeat the onboarding");
 
-  const output = makeOutput("s-with-role");
-  await hooks["chat.message"]({ sessionID: "s-with-role" }, output);
+  const text = await contextFor(hooks, "s-with-role");
 
-  assert.equal(output.parts.length, 1);
-  assert.ok(output.parts[0].text.includes("Test DEV content"));
-  assert.ok(output.parts[0].text.includes("Active role instructions (developer — Developer)"));
-  assert.ok(output.parts[0].text.includes("save_user_role"), "it must state how to change roles");
+  assert.ok(text.includes("Test DEV content"));
+  assert.ok(text.includes("Active role instructions (developer — Developer)"));
+  assert.ok(text.includes("save_user_role"), "it must state how to change roles");
 });
 
 test("the plugin prepends the role announcement to the first reply of the session only", async () => {
@@ -183,10 +266,12 @@ test("injection happens only once per session", async () => {
   useFakeEngram(store);
   const hooks = await makePlugin(root);
 
-  await hooks["chat.message"]({ sessionID: "s-dedupe" }, makeOutput("s-dedupe"));
+  const firstOutput = makeOutput("s-dedupe");
+  await hooks["chat.message"]({ sessionID: "s-dedupe" }, firstOutput);
   const second = makeOutput("s-dedupe");
   await hooks["chat.message"]({ sessionID: "s-dedupe" }, second);
 
+  assert.equal(firstOutput.parts.length, 0);
   assert.equal(second.parts.length, 0);
 });
 
@@ -199,6 +284,7 @@ test("subagent sessions receive no injection", async () => {
   await hooks["chat.message"]({ sessionID: "s-sub" }, output);
 
   assert.equal(output.parts.length, 0);
+  assert.equal(await injectedSystem(hooks, "s-sub"), "", "a skipped session stores no context");
 });
 
 test("saved preferences and conventions are injected in the next session", async () => {
@@ -219,10 +305,7 @@ test("saved preferences and conventions are injected in the next session", async
   );
   assert.ok(convResult.includes("Convention saved with project scope"));
 
-  const output = makeOutput("s-full");
-  await hooks["chat.message"]({ sessionID: "s-full" }, output);
-
-  const text = output.parts[0].text;
+  const text = await contextFor(hooks, "s-full");
   assert.ok(text.includes("User preferences"));
   assert.ok(text.includes("Reply language: en"));
   assert.ok(text.includes("Working conventions recorded"));
@@ -251,10 +334,7 @@ test("a global convention crosses projects; a project one does not", async () =>
   const otherRoot = makeTempDir("persona-plugin-other-");
   dirs.push(otherRoot);
   const otherHooks = await makePlugin(otherRoot);
-  const output = makeOutput("s-global");
-  await otherHooks["chat.message"]({ sessionID: "s-global" }, output);
-
-  const text = output.parts[0].text;
+  const text = await contextFor(otherHooks, "s-global");
   assert.ok(text.includes("Global conventions"));
   assert.ok(text.includes("Never use any"));
   assert.ok(!text.includes("Only for this repo"), "the project convention must stay in its project");
@@ -282,10 +362,8 @@ test("a failure reading one conventions scope still injects the other and the ro
   process.env.PERSONA_ENGRAM_ARGS = JSON.stringify([FIXTURE, store, "--fail-query=global conventions"]);
   const hooks = await makePlugin(root);
 
-  const output = makeOutput("s-degraded-global");
-  await hooks["chat.message"]({ sessionID: "s-degraded-global" }, output);
-  assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
-  const text = output.parts[0].text;
+  const text = await contextFor(hooks, "s-degraded-global");
+  assert.ok(text !== "", "conventions failures must never block role injection");
   assert.ok(text.includes("Active role instructions (developer — Developer)"));
   assert.ok(text.includes("Commits in English"), "the surviving project scope must still be injected");
   assert.ok(!text.includes("Never use any"));
@@ -310,10 +388,8 @@ test("a failure reading the project scope still injects the global scope", async
   process.env.PERSONA_ENGRAM_ARGS = JSON.stringify([FIXTURE, store, "--fail-query=project conventions"]);
   const hooks = await makePlugin(root);
 
-  const output = makeOutput("s-degraded-project");
-  await hooks["chat.message"]({ sessionID: "s-degraded-project" }, output);
-  assert.equal(output.parts.length, 1, "conventions failures must never block role injection");
-  const text = output.parts[0].text;
+  const text = await contextFor(hooks, "s-degraded-project");
+  assert.ok(text !== "", "conventions failures must never block role injection");
   assert.ok(text.includes("Active role instructions (developer — Developer)"));
   assert.ok(text.includes("Never use any"), "the surviving global scope must still be injected");
   assert.ok(!text.includes("Commits in English"));
@@ -348,15 +424,13 @@ test("with Engram down it injects nothing and retries on the next message", asyn
   process.env.PERSONA_ENGRAM_ARGS = JSON.stringify(["mcp"]);
   const hooks = await makePlugin(root);
 
-  const down = makeOutput("s-retry");
-  await hooks["chat.message"]({ sessionID: "s-retry" }, down);
-  assert.equal(down.parts.length, 0, "without Engram it must inject nothing");
+  await hooks["chat.message"]({ sessionID: "s-retry" }, makeOutput("s-retry"));
+  assert.equal(await injectedSystem(hooks, "s-retry"), "", "without Engram it must inject nothing");
 
   useFakeEngram(store);
-  const up = makeOutput("s-retry");
-  await hooks["chat.message"]({ sessionID: "s-retry" }, up);
-  assert.equal(up.parts.length, 1, "once Engram recovers, the same sessionID must be retried");
-  assert.ok(up.parts[0].text.includes("No role is configured"));
+  const text = await contextFor(hooks, "s-retry");
+  assert.ok(text !== "", "once Engram recovers, the same sessionID must be retried");
+  assert.ok(text.includes("No role is configured"));
 });
 
 test("get_persona_status returns what is recorded in Engram", async () => {
@@ -577,9 +651,8 @@ test("a pending update notice survives an Engram failure and role-resolution ret
     process.env.PERSONA_ENGRAM_ARGS = JSON.stringify(["mcp"]);
     const hooks = await makePlugin(root);
 
-    const down = makeOutput("s-update-retry");
-    await hooks["chat.message"]({ sessionID: "s-update-retry" }, down);
-    assert.equal(down.parts.length, 0, "without Engram it must inject nothing");
+    await hooks["chat.message"]({ sessionID: "s-update-retry" }, makeOutput("s-update-retry"));
+    assert.equal(await injectedSystem(hooks, "s-update-retry"), "", "without Engram it must inject nothing");
 
     // Give the backgrounded update check time to resolve, then point the
     // registry at a *different* version: if the retry below mistakenly
@@ -588,9 +661,10 @@ test("a pending update notice survives an Engram failure and role-resolution ret
     await useFakeRegistry({ version: "888.0.0" });
 
     useFakeEngram(store);
-    const up = makeOutput("s-update-retry");
-    await hooks["chat.message"]({ sessionID: "s-update-retry" }, up);
-    assert.equal(up.parts.length, 1, "once Engram recovers, the same sessionID must be retried");
+    assert.ok(
+      (await contextFor(hooks, "s-update-retry")) !== "",
+      "once Engram recovers, the same sessionID must be retried"
+    );
 
     const reply = { text: "Back online." };
     await hooks["experimental.text.complete"]({ sessionID: "s-update-retry", messageID: "m1", partID: "p1" }, reply);

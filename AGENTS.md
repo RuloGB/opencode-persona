@@ -18,6 +18,8 @@ src/
 │                       list, dedupe)
 ├── engram-cache.ts   ← local cache: logical key -> observation id
 ├── engram-client.ts  ← Engram MCP client (`engram mcp` subprocess, timeouts)
+├── internal-agents.ts ← detects OpenCode's internal agents (title, compaction,
+│                       summary) to keep the context out of their system prompt
 ├── logger.ts         ← diagnostics log -> ~/.persona/persona.log
 ├── preferences.ts    ← user-preferences domain (language, detail)
 ├── prompts.ts        ← model-facing texts (bootstrap, guidance, tools) and
@@ -67,12 +69,15 @@ the old name is orphaned (done knowingly during testing with
 `persona/team-conventions` → `persona/project-conventions`, and again before
 the first public release when `title`/`searchQuery` moved from Spanish to English).
 
-All of them are injected on the first `chat.message` of each session: role +
+All of them are composed on the first `chat.message` of each session: role +
 preferences + conventions (global and project rendered as one section; a rule
 present in both scopes is shown only once, under the project block), with the
-session guidance always last. Preferences and each conventions scope
-degrade separately and never prevent injecting the role; a failure reading
-the role is retried on the next message.
+session guidance always last. The composed block is stored per session and
+injected into the **system prompt** (`experimental.chat.system.transform`) on
+every LLM call of that session, which also keeps the role alive after a
+compaction. Preferences and each conventions scope degrade separately and
+never prevent injecting the role; a failure reading the role is retried on
+the next message.
 
 The user-facing active-role announcement (`✨ Persona plugin: active role -
 Developer`) is NOT requested from the model: prompt compliance is
@@ -100,9 +105,17 @@ conventions).
   twice, and any non-function export makes the loader throw.
 - The `session.created` event only fires when a session is CREATED: resumed
   sessions (e.g. reopening the desktop app) never emit it. That is why the
-  role injection happens in the `chat.message` hook (first user message of
-  each session, deduplicated per process), appending a `synthetic: true` part
-  to the message itself.
+  role context is composed in the `chat.message` hook (first user message of
+  each session, deduplicated per process).
+- The context must NOT travel as a `synthetic: true` part of the user message:
+  the title generator only skips a user message whose parts are ALL synthetic,
+  so our block reached the title model and every session ended up titled after
+  it. It is injected into the system prompt instead
+  (`experimental.chat.system.transform`), which the title call does not
+  populate. OpenCode puts the calling agent's own prompt in `system[0]`, so
+  `src/internal-agents.ts` skips the injection for the internal title,
+  compaction and summary agents by matching that opening sentence; an upstream
+  rewording only degrades to the previous behavior.
 - NEVER `await client.tui.*` during plugin initialization: the TUI is not
   connected yet and the await blocks OpenCode's entire startup (black screen).
   Toasts are always fire-and-forget with `.catch()`.
@@ -133,7 +146,7 @@ conventions).
 npm install && npm run typecheck && npm test
 ```
 
-The suite (`node:test`, 81 tests) does not touch the real Engram database:
+The suite (`node:test`, 115 tests) does not touch the real Engram database:
 the integration tests launch `test/helpers/fake-engram.ts`, a fake MCP server
 that replicates the `engram mcp` response format over a temporary JSON file.
 Operational details:

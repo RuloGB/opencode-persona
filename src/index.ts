@@ -7,6 +7,7 @@ import {
   EngramClient,
   type EngramEntryDef,
 } from "./engram-client.ts";
+import { isInternalAgentRequest } from "./internal-agents.ts";
 import { PersonaLogger } from "./logger.ts";
 import { registerProject } from "./storage-paths.ts";
 import {
@@ -59,6 +60,14 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
   // notice; kept as a separate map so neither can clobber the other when
   // both are pending for the same session.
   const pendingUpdateNotices = new Map<string, VersionUpdate>();
+  // Persona context composed on the first chat.message of a session, injected
+  // into the system prompt of every LLM call of that session (see the
+  // experimental.chat.system.transform hook). Resending it on every call is
+  // what keeps the role alive after a compaction, and it costs no extra
+  // tokens compared to the synthetic message part it replaces: that part was
+  // persisted in the conversation history and was already resent with every
+  // call.
+  const sessionContexts = new Map<string, string>();
 
   registerProject(baseDir); // best-effort (never throws): keeps the ~/.persona projects index current
 
@@ -326,19 +335,15 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
         if (role) sections.push(ROLE_SESSION_GUIDANCE);
         const text = sections.join("\n\n");
 
-        output.parts.push({
-          id: `prt-persona-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
-          sessionID,
-          messageID: output.message?.id ?? "",
-          type: "text",
-          text,
-          synthetic: true,
-        });
+        // Stored, not pushed into the message: a synthetic part still reaches
+        // the title generator (it only skips messages whose parts are ALL
+        // synthetic), which titled every session after the persona block.
+        sessionContexts.set(sessionID, text);
 
         logger.log(
           (role
-            ? `role '${role}' instructions injected into the message`
-            : "no saved role: bootstrap instruction injected (will ask for the role)") +
+            ? `role '${role}' instructions ready for the system prompt`
+            : "no saved role: bootstrap instruction ready (will ask for the role)") +
             ` (preferences=${preferencesContext !== null}, conventions=${conventionsContext !== null})`
         );
 
@@ -349,6 +354,29 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
       } catch (err) {
         // The plugin must never block the user's message.
         logger.error("error in chat.message", err);
+      }
+    },
+
+    // The persona context travels in the system prompt, not in the user's
+    // message: OpenCode's title generator reads the message parts (and only
+    // skips a user message whose parts are ALL synthetic), so a synthetic
+    // part made every session title describe the persona block instead of the
+    // conversation. The title call passes system: [] plus its own agent
+    // prompt, so the guard below keeps our block out of it.
+    "experimental.chat.system.transform": async (input, output) => {
+      try {
+        const sessionID = input.sessionID;
+        if (!sessionID) return;
+        const context = sessionContexts.get(sessionID);
+        if (!context) return;
+        if (isInternalAgentRequest(output.system)) {
+          logger.log(`system prompt of an internal agent (session ${sessionID}); context not injected`);
+          return;
+        }
+        output.system.push(context);
+      } catch (err) {
+        // The plugin must never break a request.
+        logger.error("error in experimental.chat.system.transform", err);
       }
     },
 
@@ -410,6 +438,7 @@ export const Persona: Plugin = async ({ client, directory, worktree }) => {
           pendingAnnouncements.delete(sessionID);
           updateCheckedSessions.delete(sessionID);
           pendingUpdateNotices.delete(sessionID);
+          sessionContexts.delete(sessionID);
         }
       } catch {
         // Logging must never break the event flow.

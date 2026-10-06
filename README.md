@@ -53,6 +53,8 @@ Every reply produced by the plugin opens with the `✨ Persona plugin:` marker, 
 ✨ Persona plugin: active role - Developer
 ```
 
+> On OpenCode v2 the active-role line is not shown (v2 has no hook to prepend it); the role is still loaded and save confirmations keep the marker. See [OpenCode compatibility](#opencode-compatibility).
+
 ## Quick Start
 
 > **Before you start:** Persona needs **OpenCode** and **[Engram](https://github.com/Gentleman-Programming/engram)** installed — that's where your role and preferences are stored. See [Requirements](#requirements) below before installing so the first session doesn't fail.
@@ -72,7 +74,7 @@ The assistant adds the plugin entry **and sets up the `harness/user-roles/` fold
 
 </td><td>
 
-Add the plugin to your project's `opencode.json` (create it in the project root if it doesn't exist):
+Add the plugin to your project's `opencode.json` (create it in the project root if it doesn't exist). On OpenCode v2, prefer the `plugins` key (`"plugins": ["opencode-persona"]`); the `plugin` key below also works there:
 
 ```json
 {
@@ -89,7 +91,7 @@ OpenCode installs the package automatically the next time it starts in that proj
 > **Pin the version.** An entry without a version (`"opencode-persona"`) is resolved **once**: OpenCode caches that install and keeps reusing it, so the project stays on whatever version was current the day you installed it — even after a newer one is published. `@latest` behaves the same way. Write the version you want instead, and bump it to update:
 >
 > ```json
-> { "plugin": ["opencode-persona@2.2.1"] }
+> { "plugin": ["opencode-persona@3.0.0"] }
 > ```
 >
 > See [Where the plugin lives, updating, and uninstalling](docs/INSTALL.md#where-the-plugin-lives-updating-and-uninstalling) if a project is already stuck on an old version.
@@ -112,13 +114,27 @@ For version pinning, updates, local development, and troubleshooting, see [docs/
 
 Persona stores everything it learns in **Engram**, so it must be installed **before** you use the plugin — otherwise the first session can't save your role.
 
-- **OpenCode** — CLI or desktop app.
+- **OpenCode** — CLI or desktop app, **v1 1.18.29 or later, or v2**. See [OpenCode compatibility](#opencode-compatibility).
 - **Engram** — installed and reachable on the `PATH`. The plugin launches `engram mcp` as a subprocess; verify with `which engram` (macOS/Linux) or `where engram` (Windows). See the [Engram repository](https://github.com/Gentleman-Programming/engram).
 - **A `harness/user-roles/` folder** in the project root, one instruction file per role (created in step 2 of the Quick Start).
 
 Node.js and npm are **not** needed to use Persona: OpenCode downloads and installs it with its bundled Bun. They are only required to contribute to this repository.
 
 > If Engram is missing, Persona **does not block your session** — it falls back to the default behavior and asks for your role again once Engram becomes reachable.
+
+### OpenCode compatibility
+
+One published package serves both OpenCode lines. On v2 the recommended key is `plugins`; v2 still normalizes the v1 `plugin` key automatically, so an existing v1 entry keeps working:
+
+```json
+{ "plugins": ["opencode-persona@3.0.0"] }
+```
+
+| OpenCode | Supported | What you get |
+|----------|-----------|--------------|
+| v2 | ✅ | Role, preferences, conventions, and the four tools. **No** active-role announcement and **no** update notice: v2 offers no hook to prepend text to a reply. |
+| v1 1.18.29 or later | ✅ | Everything, including the active-role announcement and the update notice. |
+| v1 before 1.18.29 | ❌ | Unsupported: the [official v2 migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1) supports v1 object entrypoints from 1.18.29. |
 
 ## What Persona does
 
@@ -183,7 +199,10 @@ See the [Quick Start](#quick-start) above to get running, or [docs/INSTALL.md](d
 ```
 .
 ├── src/
-│   ├── index.ts             # Plugin entry point
+│   ├── index.ts             # Plugin entry point: one module for OpenCode v1 and v2
+│   ├── core.ts              # Runtime-agnostic core shared by both adapters
+│   ├── plugin-v1.ts         # OpenCode v1 adapter
+│   ├── plugin-v2.ts         # OpenCode v2 adapter
 │   └── *.ts                 # Internal modules (roles, preferences, conventions, database client...)
 ├── test/                    # Test suite (node:test + a fake MCP server)
 ├── templates/

@@ -8,3 +8,4 @@ harness/
 # Local AI tooling caches
 .claude/
 .codegraph/
+.compendio/

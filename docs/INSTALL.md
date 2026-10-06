@@ -39,7 +39,7 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
    ```json
    {
      "$schema": "https://opencode.ai/config.json",
-     "plugin": ["opencode-persona@2.2.1"]
+     "plugin": ["opencode-persona@3.0.0"]
    }
    ```
 
@@ -49,7 +49,7 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 
    ```json
    {
-     "plugins": ["opencode-persona@2.2.1"]
+     "plugins": ["opencode-persona@3.0.0"]
    }
    ```
 
@@ -99,8 +99,8 @@ The minimum v1 version is 1.18.29 because the [official v2 migration guide](http
 
 ## Where the plugin lives, updating, and uninstalling
 
-- **Where it lives**: OpenCode installs plugin packages with its bundled Bun into its own cache, not into your project. Each entry of the `plugin` array gets its own folder under `~/.cache/opencode/packages/`, named after the entry itself (`opencode-persona`, `opencode-persona@2.2.1`, ...). Your project only carries the one-line `plugin` entry.
-- **Updating**: change the pin (e.g. `"opencode-persona@2.2.1"`) and restart OpenCode. That is the only reliable way to update, because a cache folder resolves its version **once**, on the first install, and then reuses it forever. An entry without a version, and `@latest` too, therefore keeps running the version that was current the day the project first started with it, no matter how many releases follow.
+- **Where it lives**: OpenCode installs plugin packages with its bundled Bun into its own cache, not into your project. Each entry of the `plugin` array gets its own folder under `~/.cache/opencode/packages/`, named after the entry itself (`opencode-persona`, `opencode-persona@3.0.0`, ...). Your project only carries the one-line `plugin` entry.
+- **Updating**: change the pin (e.g. `"opencode-persona@3.0.0"`) and restart OpenCode. That is the only reliable way to update, because a cache folder resolves its version **once**, on the first install, and then reuses it forever. An entry without a version, and `@latest` too, therefore keeps running the version that was current the day the project first started with it, no matter how many releases follow.
 - **Unpinning a project that is already stuck**: pinning the new version is enough for that project. To also stop the version-less folders from serving an old copy to other projects, delete them and restart OpenCode:
 
   ```bash
@@ -183,4 +183,4 @@ The test suite does not need Engram installed: it uses a fake MCP server include
 | The role is announced but no instructions apply | The role's `.md` file is missing | Create the matching file in `harness/user-roles/`; until then the assistant notes it and uses its default behavior |
 | The role is asked again | Saving to Engram failed in the previous session | Review `persona.log`; with Engram available, the next save persists |
 | No injection appears in a session | It is a subagent session | Expected: Persona ignores subagent sessions and only injects in main sessions |
-| An old version keeps running after publishing a new one | The `plugin` entry has no version (or uses `@latest`), so OpenCode keeps reusing the cache folder it resolved on the first install | Pin the new version in `opencode.json` (e.g. `"opencode-persona@2.2.1"`) and restart OpenCode; see [updating](#where-the-plugin-lives-updating-and-uninstalling) to clear the stale cache folders too |
+| An old version keeps running after publishing a new one | The `plugin` entry has no version (or uses `@latest`), so OpenCode keeps reusing the cache folder it resolved on the first install | Pin the new version in `opencode.json` (e.g. `"opencode-persona@3.0.0"`) and restart OpenCode; see [updating](#where-the-plugin-lives-updating-and-uninstalling) to clear the stale cache folders too |

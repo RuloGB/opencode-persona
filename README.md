@@ -91,7 +91,7 @@ OpenCode installs the package automatically the next time it starts in that proj
 > **Pin the version.** An entry without a version (`"opencode-persona"`) is resolved **once**: OpenCode caches that install and keeps reusing it, so the project stays on whatever version was current the day you installed it — even after a newer one is published. `@latest` behaves the same way. Write the version you want instead, and bump it to update:
 >
 > ```json
-> { "plugin": ["opencode-persona@2.2.1"] }
+> { "plugin": ["opencode-persona@3.0.0"] }
 > ```
 >
 > See [Where the plugin lives, updating, and uninstalling](docs/INSTALL.md#where-the-plugin-lives-updating-and-uninstalling) if a project is already stuck on an old version.
@@ -127,7 +127,7 @@ Node.js and npm are **not** needed to use Persona: OpenCode downloads and instal
 One published package serves both OpenCode lines. On v2 the recommended key is `plugins`; v2 still normalizes the v1 `plugin` key automatically, so an existing v1 entry keeps working:
 
 ```json
-{ "plugins": ["opencode-persona@2.2.1"] }
+{ "plugins": ["opencode-persona@3.0.0"] }
 ```
 
 | OpenCode | Supported | What you get |

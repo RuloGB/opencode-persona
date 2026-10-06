@@ -7,13 +7,23 @@ not here.
 ## Structure
 
 The repo root is the npm package `opencode-persona`; consumers enable it with
-`"plugin": ["opencode-persona"]` in their project's `opencode.json`.
+`"plugin": ["opencode-persona"]` in their project's `opencode.json`. One module
+serves OpenCode v1 (>= 1.18.29) and v2: see the loader contracts below.
 
 ```
 src/
-├── index.ts          ← OpenCode plugin entry (hooks + tools save_user_role,
-│                       save_user_preferences, save_convention and
-│                       get_persona_status); named export + default alias
+├── index.ts          ← published entry: default export `{ id, server, setup }`
+│                       (v1 server + v2 setup) and the named `Persona` (v1)
+├── core.ts           ← runtime-agnostic core shared by both adapters: Engram
+│                       wiring, per-session context composition, session
+│                       state and the four tools (save_user_role,
+│                       save_user_preferences, save_convention,
+│                       get_persona_status)
+├── plugin-v1.ts      ← v1 adapter (`Persona`): chat.message, system
+│                       transform, text.complete banners, toast, events
+├── plugin-v2.ts      ← v2 adapter (`setup`): prompt/context hooks,
+│                       tool.transform, session.deleted cleanup; hand-written
+│                       structural types, no v2 SDK dependency
 ├── conventions.ts    ← conventions domain (project + global scopes, bounded
 │                       list, dedupe)
 ├── engram-cache.ts   ← local cache: logical key -> observation id
@@ -25,16 +35,20 @@ src/
 ├── prompts.ts        ← model-facing texts (bootstrap, guidance, tools) and
 │                       the user-facing role announcement line
 ├── roles.ts          ← roles domain: catalog and instruction loading
-└── storage-paths.ts  ← global storage layout under ~/.persona (paths,
-                        project key, projects index)
+├── storage-paths.ts  ← global storage layout under ~/.persona (paths,
+│                       project key, projects index)
+└── update-check.ts   ← npm registry check for a newer release (v1 notice)
 test/
 ├── helpers/
 │   ├── fake-engram.ts ← fake MCP server that mimics `engram mcp` (fixture)
+│   ├── fake-registry.ts ← fake npm registry for the update check
 │   └── tmp.ts         ← temporary directories for tests
 └── *.test.ts          ← node:test suite (unit + plugin integration)
 .opencode/
-└── plugin/persona.ts ← dev-only shim re-exporting src/index.ts so this repo
-                        dogfoods the plugin; needs `npm install` at the root
+└── plugin/persona.ts ← dev-only shim re-exporting the src/index.ts default so this repo
+                        dogfoods the plugin on v1 and v2 (v2 discovers local
+                        plugins in .opencode/plugin/ and .opencode/plugins/);
+                        needs `npm install` at the root
 templates/
 └── user-roles/       ← per-role instruction templates (DEV.md, ARQ.md,
                         BA.md, QA.md, DL.md) and _TEMPLATE.md, the shared role template
@@ -69,12 +83,13 @@ the old name is orphaned (done knowingly during testing with
 `persona/team-conventions` → `persona/project-conventions`, and again before
 the first public release when `title`/`searchQuery` moved from Spanish to English).
 
-All of them are composed on the first `chat.message` of each session: role +
+All of them are composed on the first user message of each session (v1
+`chat.message`, v2 `session.hook("prompt")`): role +
 preferences + conventions (global and project rendered as one section; a rule
 present in both scopes is shown only once, under the project block), with the
 session guidance always last. The composed block is stored per session and
-injected into the **system prompt** (`experimental.chat.system.transform`) on
-every LLM call of that session, which also keeps the role alive after a
+injected into the **system prompt** (v1 `experimental.chat.system.transform`,
+v2 `session.hook("context")`) on every LLM call of that session, which also keeps the role alive after a
 compaction. Preferences and each conventions scope degrade separately and
 never prevent injecting the role; a failure reading the role is retried on
 the next message.
@@ -83,7 +98,9 @@ The user-facing active-role announcement (`✨ Persona plugin: active role -
 Developer`) is NOT requested from the model: prompt compliance is
 probabilistic and some models skipped it. The plugin prepends the line itself
 to the first completed assistant text of the session via the
-`experimental.text.complete` hook (always English, first reply only).
+`experimental.text.complete` hook (always English, first reply only). v2 has
+no equivalent hook and no toasts for server plugins, so on v2 there is no
+announcement, no update notice and no toast (accepted decision).
 
 The read-only tool `get_persona_status` queries all the entries live. The
 session guidance instructs the model to use it when the user asks what
@@ -99,10 +116,35 @@ conventions).
   In this repo that folder holds only the dev shim; auxiliary modules live in
   `src/` — putting them in `.opencode/plugin/` breaks loading of all plugins
   with "Class constructor ... cannot be invoked without 'new'".
-- OpenCode initializes every function export of a plugin module and dedupes
-  them by reference. `src/index.ts` exports `Persona` and a `default` alias of
-  the SAME value; exporting a distinct value as default would load the plugin
-  twice, and any non-function export makes the loader throw.
+- Both OpenCode lines load the SAME entry module, so `src/index.ts` default
+  exports one object `{ id: "opencode-persona", server, setup }`:
+  - v1 (>= 1.18.29, `readV1Plugin`): a record `default` with `server` runs
+    only `server` and ignores named exports; `server` and `tui` together
+    throw, so the object must never have a `tui` key. The `>=1.18.29` peer
+    floor follows the official migration guide
+    (https://opencode.ai/v2/docs/build/plugins/migrate-v1), which supports v1 object
+    entrypoints from 1.18.29; older v1 releases are unsupported (untested).
+  - v2 (`PluginModule`): decodes `default` as `{ id, effect }` or
+    `{ id, setup }` with extra keys ignored; an `effect` key would select the
+    Effect branch, so the object must never have one. `setup(ctx)` returns a
+    cleanup that OpenCode calls on unload.
+  - The object is typed as an intersection, not as v1's `PluginModule`, whose
+    `tui?: never` and excess-property checks reject `setup`.
+- v2 installs may not ship `@opencode-ai/plugin`, so `src/` imports it with
+  `import type` only (a test enforces it; the peer dependency is optional).
+  Tool args use `zod` directly (an explicit dependency); v1's `tool()` helper
+  is an identity function, so plain `{ description, args, execute }` objects
+  are equivalent.
+- v2 tools default to Code Mode (reachable only through its `execute` tool).
+  The prompts tell the model to call the tools by name, so the v2 adapter adds
+  them with `options: { codemode: false }`.
+- v2 tool `input` is plain JSON Schema (as in the migration guide), generated
+  once outside the replayable `tool.transform` callback with
+  `z.toJSONSchema(z.object(args), { target: "draft-2020-12", io: "input" })`
+  and passed through `structuredClone`: zod 4.4 attaches a non-enumerable
+  `~standard` to that result, and v2 detects Standard Schemas with
+  `"~standard" in schema`. v2 validates each call against the JSON Schema
+  itself, so `execute` does not re-parse.
 - The `session.created` event only fires when a session is CREATED: resumed
   sessions (e.g. reopening the desktop app) never emit it. That is why the
   role context is composed in the `chat.message` hook (first user message of
@@ -146,9 +188,11 @@ conventions).
 npm install && npm run typecheck && npm test
 ```
 
-The suite (`node:test`, 115 tests) does not touch the real Engram database:
+The suite (`node:test`, 122 tests) does not touch the real Engram database:
 the integration tests launch `test/helpers/fake-engram.ts`, a fake MCP server
 that replicates the `engram mcp` response format over a temporary JSON file.
+The v2 adapter is driven by a hand-built fake v2 context
+(`test/plugin-v2.test.ts`).
 Operational details:
 
 - `npm test` uses `--test-force-exit` and an explicit glob (`test/*.test.ts`):

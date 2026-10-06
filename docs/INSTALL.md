@@ -10,7 +10,7 @@ The plugin's prompts are written in English, but the assistant always replies in
 
 ## Prerequisites
 
-- [ ] **OpenCode** installed (CLI or desktop app).
+- [ ] **OpenCode** installed (CLI or desktop app): **v1 1.18.29 or later, or v2**. Older v1 releases are unsupported (see [OpenCode v1 and v2](#opencode-v1-and-v2)).
 - [ ] **Engram** installed and reachable on the PATH. The plugin launches `engram mcp` as a subprocess; check it with `which engram` (macOS/Linux) or `where engram` (Windows). See the [Engram repository](https://github.com/Gentleman-Programming/engram).
 
 Node.js and npm are **not** required: the plugin is distributed as the npm package `opencode-persona`, and OpenCode downloads and installs it automatically with its bundled Bun.
@@ -45,6 +45,14 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 
    > If your project already has an `opencode.json` with a `plugin` array, just append `"opencode-persona"` to it.
 
+   On **OpenCode v2**, the recommended key is `plugins` (v2 still normalizes the v1 `plugin` key above automatically):
+
+   ```json
+   {
+     "plugins": ["opencode-persona@2.2.1"]
+   }
+   ```
+
 2. **Set up the role instructions folder** (`harness/user-roles/`). If you chose **Option A** above (asked the assistant to install), it usually creates this folder from the templates as part of the install — check whether `harness/user-roles/` already exists and, if so, just adapt the files below. Otherwise, create it by copying the `templates/user-roles/` folder shipped with this repository (also included in the npm package), then adapt each file to how you want the roles to behave in that project:
 
    ```bash
@@ -67,6 +75,27 @@ Node.js and npm are **not** required: the plugin is distributed as the npm packa
 3. **Nothing to add to `.gitignore`**: the plugin writes no files inside your project. Its runtime files live under `~/.persona/` in your user home: `persona.log` (diagnostics), `cache/<project>.json` (local Engram ids), and `projects.json` (an index of the projects where the plugin has run).
 
 4. **Open OpenCode in the root of your project.**
+
+## OpenCode v1 and v2
+
+The same package works on both lines. v1 uses the `plugin` key of `opencode.json`; on v2 the recommended key is `plugins`, and v2 still normalizes an existing v1 `plugin` entry automatically.
+
+| | v1 (1.18.29 or later) | v2 |
+|-|---------------------|----|
+| Role, preferences, conventions injected | ✅ | ✅ |
+| `save_user_role`, `save_user_preferences`, `save_convention`, `get_persona_status` | ✅ | ✅ |
+| Active-role announcement on the first reply | ✅ | ❌ |
+| Update notice for a newer release | ✅ | ❌ |
+| "Role loaded" toast | ✅ | ❌ |
+
+v2 has no equivalent of the v1 hook that edits a completed reply, and server plugins cannot show toasts, so those three items are v1-only. On v2, ask "what do I have recorded in Persona?" to confirm the active role.
+
+**Why one module works on both.** The package's default export is a single object, `{ id: "opencode-persona", server, setup }`:
+
+- v1 reads `default` as `{ id, server }` and runs only `server`.
+- v2 reads `default` as `{ id, setup }` and ignores the extra `server` key.
+
+The minimum v1 version is 1.18.29 because the [official v2 migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1) supports v1 object entrypoints from 1.18.29; older v1 releases are unsupported.
 
 ## Where the plugin lives, updating, and uninstalling
 
@@ -105,11 +134,11 @@ Then point your test project's `opencode.json` at the built entry file:
 }
 ```
 
-Rebuild (`npm run build`) after every source change. This repository also dogfoods the plugin directly: opening OpenCode at the repo root loads `.opencode/plugin/persona.ts`, a shim that re-exports `src/index.ts` (run `npm install` at the root first).
+Rebuild (`npm run build`) after every source change. This repository also dogfoods the plugin directly: opening OpenCode at the repo root loads `.opencode/plugin/persona.ts`, a shim that re-exports the default of `src/index.ts` (run `npm install` at the root first). v1 and v2 both pick it up: v2 discovers local plugins in `.opencode/plugin/` and `.opencode/plugins/`.
 
 ## Verification
 
-In the first session, the plugin introduces itself, asks for the user's role (options 1-4), and saves it on answer; the confirmation also offers the optional configuration (language, level of detail, and working conventions — project or global) with example phrases to do it right then or in any future session. In later sessions, the plugin itself prepends the active-role announcement to the assistant's first reply (always in English, first reply of the session only — it does not depend on the model remembering to write it):
+In the first session, the plugin introduces itself, asks for the user's role (options 1-4), and saves it on answer; the confirmation also offers the optional configuration (language, level of detail, and working conventions — project or global) with example phrases to do it right then or in any future session. In later sessions on OpenCode v1, the plugin itself prepends the active-role announcement to the assistant's first reply (always in English, first reply of the session only — it does not depend on the model remembering to write it; OpenCode v2 shows no announcement):
 
 ```
 ✨ Persona plugin: active role - Developer
@@ -130,7 +159,7 @@ The test suite does not need Engram installed: it uses a fake MCP server include
 
 | Topic | Behavior |
 |-------|----------|
-| Visual marker | Every reply generated by the plugin (role announcement, save confirmations, status) starts with `✨ Persona plugin:`, to tell it apart at a glance from the assistant's normal replies. |
+| Visual marker | Every reply generated by the plugin (role announcement on v1, save confirmations, status) starts with `✨ Persona plugin:`, to tell it apart at a glance from the assistant's normal replies. |
 | Persistence | The role is saved in Engram with personal scope: once per user and machine, shared across projects. |
 | Role change | Ask in the chat "change my role to QA" (or the one that applies); the plugin updates the saved role without duplicating it. |
 | Preferences | "Always reply in English" or "be more brief" are saved (personal scope) and apply in all your sessions, in any project. Each field updates separately. |
@@ -141,7 +170,7 @@ The test suite does not need Engram installed: it uses a fake MCP server include
 | Without Engram | The plugin degrades to default behavior without blocking the session; the role will be asked again once Engram is available. A hung `engram mcp` is cut off by a timeout (8 s). |
 | Missing role file | If the role's `.md` file is missing from `harness/user-roles/`, the assistant runs with its default behavior and says so. |
 | Subagent sessions | Injection only happens in main sessions; subagent sessions are ignored. |
-| Update check | At the start of every main session, the plugin checks npm for a newer published version (5 s timeout) without blocking the session. If found before a reply completes, that reply is prepended with a prominent notice with the new version number; if the check is still in flight, a later reply in the same session shows it instead. The check fails silently on any error (timeout, network, npm outage) and is never cached: each session checks again. |
+| Update check | OpenCode v1 only. At the start of every main session, the plugin checks npm for a newer published version (5 s timeout) without blocking the session. If found before a reply completes, that reply is prepended with a prominent notice with the new version number; if the check is still in flight, a later reply in the same session shows it instead. The check fails silently on any error (timeout, network, npm outage) and is never cached: each session checks again. |
 | Local cache | `~/.persona/cache/<project>.json` stores local Engram ids, one file per project and per machine (the project is identified by its folder name, mirroring Engram). `~/.persona/projects.json` maps each project folder name to its last known path. |
 | Diagnostics | Everything is logged to `~/.persona/persona.log`, shared across projects; each line is tagged with the project folder name. |
 
